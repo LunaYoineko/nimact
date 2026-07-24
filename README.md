@@ -95,6 +95,31 @@ vbox(1,
 )
 ```
 
+背景色を指定する場合:
+
+```nim
+vbox(style(bg = colBgCard),
+  label("1st"),
+  label("2nd"),
+  label("3rd")
+)
+```
+
+隙間と背景色の両方を指定する場合:
+
+```nim
+vbox(1, style(bg = colBgCard),
+  label("1st"),
+  label("2nd"),
+  label("3rd")
+)
+```
+
+| パラメータ | 型 | 説明 |
+|---|---|---|
+| `gap` | `int` | 子同士の隙間（行数） |
+| `style` | `Style` | コンテナのスタイル（背景色など） |
+
 ### hbox — 横並びレイアウト
 
 ```nim
@@ -115,6 +140,31 @@ hbox(2,
 )
 ```
 
+背景色を指定する場合:
+
+```nim
+hbox(style(bg = colBgCard),
+  label("Left"),
+  label("Center"),
+  label("Right")
+)
+```
+
+隙間と背景色の両方を指定する場合:
+
+```nim
+hbox(2, style(bg = colBgCard),
+  label("A"),
+  label("B"),
+  label("C")
+)
+```
+
+| パラメータ | 型 | 説明 |
+|---|---|---|
+| `gap` | `int` | 子同士の隙間（列数） |
+| `style` | `Style` | コンテナのスタイル（背景色など） |
+
 ### center — 中央寄せボックス
 
 指定したサイズの領域を中央に配置し、子ウィジェットをその中で表示します。
@@ -130,6 +180,33 @@ center(40, 10,
 |---|---|---|
 | `w` | `int` | ボックスの幅 |
 | `h` | `int` | ボックスの高さ |
+
+### box — 枠付きパネル
+
+罫線付きのボックスを作成し、中に子ウィジェットを配置します。
+
+```nim
+box(30, 8, style(fg = colBlue), bsRounded,
+  label("Title", bold = true),
+  label("Content")
+)
+```
+
+| パラメータ | 型 | 説明 |
+|---|---|---|
+| `w` | `int` | ボックスの幅（枠線含む） |
+| `h` | `int` | ボックスの高さ（枠線含む） |
+| `style` | `Style` | 枠線と内部の装飾スタイル |
+| `borderType` | `BorderStyle` | 罫線の種類（デフォルト: `bsRounded`） |
+
+罫線スタイル:
+
+| 定数 | ボーダー |
+|---|---|
+| `bsSingle` | `┌┐└┘─│` |
+| `bsDouble` | `╔╗╚╝═║` |
+| `bsRounded` | `╭╮╰╯─│` |
+| `bsBold` | `┏┓┗┛━┃` |
 
 ### header — ヘッダーバー
 
@@ -185,10 +262,10 @@ app.onKey('q', proc() = app.quit())
 ### 特殊キー
 
 ```nim
-app.onKey(nkUp,    proc() = moveUp())
-app.onKey(nkDown,  proc() = moveDown())
-app.onKey(nkLeft,  proc() = moveLeft())
-app.onKey(nkRight, proc() = moveRight())
+app.onKey(nkUp,     proc() = moveUp())
+app.onKey(nkDown,   proc() = moveDown())
+app.onKey(nkLeft,   proc() = moveLeft())
+app.onKey(nkRight,  proc() = moveRight())
 app.onKey(nkEscape, proc() = app.quit())
 app.onKey(nkEnter,  proc() = submit())
 ```
@@ -233,7 +310,7 @@ label("Custom color", fg = myColor)
 ## スタイル
 
 ```nim
-style(fg = colGreen, bg = colBgCard, bold = true, dim = true)
+style(fg = colGreen, bg = colBgCard, bold = true, dim = true, italic = true, underline = true, reverse = true)
 ```
 
 | パラメータ | 型 | 説明 |
@@ -242,6 +319,9 @@ style(fg = colGreen, bg = colBgCard, bold = true, dim = true)
 | `bg` | `Color` | 背景色 |
 | `bold` | `bool` | 太字 |
 | `dim` | `bool` | 暗く表示 |
+| `italic` | `bool` | 斜体 |
+| `underline` | `bool` | 下線 |
+| `reverse` | `bool` | 反転 |
 
 ## 便利な関数
 
@@ -256,15 +336,6 @@ buf.drawString(10, 5, "Hello", style(fg = colGreen))
 ```nim
 buf.drawBox(5, 3, 30, 10, style(fg = colBlue), bsRounded)
 ```
-
-ボーダースタイル:
-
-| 定数 | ボーダー |
-|---|---|
-| `bsSingle` | `┌┐└┘─│` |
-| `bsDouble` | `╔╗╚╝═║` |
-| `bsRounded` | `╭╮╰╯─│` |
-| `bsBold` | `┏┓┗┛━┃` |
 
 ## サンプル
 

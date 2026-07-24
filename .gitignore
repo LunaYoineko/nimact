@@ -19,3 +19,8 @@ nimbledeps
 /tests/test_buffer
 /nimble.paths
 /nimble.paths
+examples/dashboard
+examples/hello
+examples/todo
+src/nimact/app
+tests/test_widget

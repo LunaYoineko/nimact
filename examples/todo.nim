@@ -113,7 +113,7 @@ app.onKey(nkDown, proc() =
 
 app.onKey(' ', proc() =
   if addingMode:
-    inputBuffer.add(' ')
+    if inputBuffer.len < 40: inputBuffer.add(' ')
   else:
     if todos.len > 0:
       todos[cursor].done = not todos[cursor].done
@@ -154,31 +154,31 @@ app.onKey('\x7f', proc() =
 for c in 'a'..'z':
   let ch = c
   app.onKey(ch, proc() =
-    if addingMode: inputBuffer.add(ch)
+    if addingMode and inputBuffer.len < 40: inputBuffer.add(ch)
   )
 
 for c in 'A'..'Z':
   let ch = c
   app.onKey(ch, proc() =
-    if addingMode: inputBuffer.add(ch)
+    if addingMode and inputBuffer.len < 40: inputBuffer.add(ch)
   )
 
 # 数字入力
 for c in '0'..'9':
   let ch = c
   app.onKey(ch, proc() =
-    if addingMode: inputBuffer.add(ch)
+    if addingMode and inputBuffer.len < 40: inputBuffer.add(ch)
   )
 
 # 記号入力
 app.onKey('-', proc() =
-  if addingMode: inputBuffer.add('-')
+  if addingMode and inputBuffer.len < 40: inputBuffer.add('-')
 )
 app.onKey('_', proc() =
-  if addingMode: inputBuffer.add('_')
+  if addingMode and inputBuffer.len < 40: inputBuffer.add('_')
 )
 app.onKey('.', proc() =
-  if addingMode: inputBuffer.add('.')
+  if addingMode and inputBuffer.len < 40: inputBuffer.add('.')
 )
 
 app.onKey('q', proc() = app.quit())

@@ -1,108 +1,99 @@
 ## =============================================================================
 ## nimact/core/input.nim
-## ターミナルからのキー入力を読み取るモジュール
+## Terminal keyboard input module.
 ##
-## このモジュールは以下の機能を提供する:
-##   - ノンブロッキングキー読み込み: タイムアウト付きでstdinから1バイト読み取り
-##   - エスケープシーケンス解析: 矢印キー・Escape等の特殊キーを判定
-##   - KeyEvent型: 入力されたキーの種類と文字情報を格納する型
+## Features:
+##   - Non-blocking key read: reads from stdin with VTIME-based timeout
+##   - Escape sequence parsing: arrow keys, function keys, CSI/SS3 sequences
+##   - KeyEvent type: stores key kind and character data
 ##
-## 入力処理の流れ:
-##   1. pollKey() を呼び出して1バイト読み込む
-##  2. 读み込んだバイトが '\e' (Escape) の場合、追加で2バイト読み込んで
-##     エスケープシーケンスを解析 (矢印キー等)
-##  3. KeyEvent を返して、呼び出し元で処理
+## Key mapping:
+##   Arrow keys: \e[A-D -> nkUp/Down/Right/Left
+##   Enter: \r or \n -> nkEnter
+##   Escape: \e (standalone) -> nkEscape
+##   Other: nkChar (ch field holds the character)
+##   Unknown CSI/SS3 sequences -> nkUnknown (residual bytes consumed)
 ##
-## エスケープシーケンスの形式:
-##   矢印キー: \e[A (上), \e[B (下), \e[C (右), \e[D (左)
-##   Escapeキー: \e (単体で押された場合)
+## Design: escape sequences up to 16 bytes are fully consumed to prevent
+##         residual bytes from corrupting subsequent input reads.
 ## =============================================================================
 
-## Cの read() 関数をバインディング
-## fd: ファイルディスクリプタ
-## buf: 読み込み先のバッファ
-## count: 読み込むバイト数
-## 戻り値: 実際に読み込まれたバイト数 (0=EOF, 負=エラー)
+## C read() binding
 proc c_read(fd: cint, buf: pointer, count: csize_t): csize_t
     {.importc: "read", header: "<unistd.h>".}
 
-const STDIN_FILENO = 0.cint  ## 標準入力のファイルディスクリプタ
+const STDIN_FILENO = 0.cint
 
 # =============================================================================
 # キー入力の型定義
 # =============================================================================
 
 type
-    ## キーの種類を表す列挙型
     KeyKind* = enum
-        nkChar,     ## 通常の文字キー (a-z, 0-9, スペース等)
-        nkUp,       ## 矢印キー ↑
-        nkDown,     ## 矢印キー ↓
-        nkRight,    ## 矢印キー →
-        nkLeft,     ## 矢印キー ←
-        nkEscape,   ## Escapeキー
-        nkEnter,    ## Enterキー (\r または \n)
-        nkUnknown,  ## 不明なエスケープシーケンス
-        nkNone,     ## 入力なし (タイムアウト等)
+        nkChar,     ## Normal character key
+        nkUp,       ## Arrow key up
+        nkDown,     ## Arrow key down
+        nkRight,    ## Arrow key right
+        nkLeft,     ## Arrow key left
+        nkEscape,   ## Escape key
+        nkEnter,    ## Enter key (\r or \n)
+        nkUnknown,  ## Unknown escape sequence
+        nkNone,     ## No input (timeout)
 
-    ## キー入力イベントを表すオブジェクト
     KeyEvent* = object
-        kind*: KeyKind  ## キーの種類
-        ch*: char       ## nkChar の場合の入力文字 (それ以外は未定義)
+        kind*: KeyKind
+        ch*: char
 
 # =============================================================================
-# キー入力読み込み
+# Key input reading
 # =============================================================================
 
-## STDINから1バイト読み取り、キーを判定する (ノンブロッキング)
-##
-## ノンブロッキングとは:
-##   入力データがない場合でもブロック(待機)せず、即座に nkNone を返す
-##  これにより、メインループが毎フレーム入力を確認しながら描画を続行できる
-##
-## Escape シーケンスの解析:
-##   1. 最初の1バイトを読み込む
-##   2. それが '\e' (0x1B) なら追加で2バイト読み込む
-##   3. '[', 'A' の並びなら矢印キー↑と判定
-##   4. それ以外は単なるEscapeキー押下とする
-##
-## キーマッピング:
-##   \e[A → nkUp    \e[B → nkDown
-##   \e[C → nkRight \e[D → nkLeft
-##   \r, \n → nkEnter
-##   その他 → nkChar (ch に文字を格納)
+## Read from stdin and return a KeyEvent (non-blocking).
+## Escape sequences up to 16 bytes are fully consumed to prevent
+## residual bytes from corrupting subsequent reads.
 proc pollKey*(): KeyEvent =
-    var buf: array[3, char]  # エスケープシーケンス用のバッファ (最大3バイト)
+    var buf: array[16, char]
 
-    # 最初の1バイトを読み込む
     let bytesRead = c_read(STDIN_FILENO, buf[0].addr, 1)
 
-    # 読み込みバイト数が0以下なら入力なし
     if bytesRead <= 0:
         return KeyEvent(kind: nkNone)
 
     case buf[0]
-    of '\e':  # Escape シーケンスの開始
-        # 2バイト目を読み込む (タイムアウトで取得できない場合もある)
-        let b2 = c_read(STDIN_FILENO, buf[1].addr, 1)
-        if b2 <= 0: return KeyEvent(kind: nkEscape)
+    of '\e':
+        # Read remaining bytes of the escape sequence with timeout
+        var pos = 1
+        while pos < buf.len:
+            let n = c_read(STDIN_FILENO, buf[pos].addr, 1)
+            if n <= 0: break
+            # BEL or ST terminates the sequence
+            if buf[pos] == '\x07' or buf[pos] == '\\':
+                pos += 1
+                break
+            pos += 1
 
-        # 3バイト目を読み込む
-        let b3 = c_read(STDIN_FILENO, buf[2].addr, 1)
-        if b3 <= 0: return KeyEvent(kind: nkEscape)
+        if pos == 1:
+            return KeyEvent(kind: nkEscape)
 
-        # \e[A の形式なら矢印キーと判定
         if buf[1] == '[':
-            case buf[2]
-            of 'A': return KeyEvent(kind: nkUp)      # \e[A = ↑
-            of 'B': return KeyEvent(kind: nkDown)    # \e[B = ↓
-            of 'C': return KeyEvent(kind: nkRight)   # \e[C = →
-            of 'D': return KeyEvent(kind: nkLeft)    # \e[D = ←
-            else: return KeyEvent(kind: nkUnknown)   # 不明なシーケンス
-        return KeyEvent(kind: nkEscape)  # \e 単体 = Escape キー
+            # CSI sequence: final byte determines the key
+            let final = buf[pos - 1]
+            case final
+            of 'A': return KeyEvent(kind: nkUp)
+            of 'B': return KeyEvent(kind: nkDown)
+            of 'C': return KeyEvent(kind: nkRight)
+            of 'D': return KeyEvent(kind: nkLeft)
+            else:
+                # Home, End, Delete, PgUp, PgDn, F-keys, etc.
+                return KeyEvent(kind: nkUnknown)
+        elif buf[1] == 'O':
+            # SS3 sequence: F1-F4 (\eOP - \eOS)
+            return KeyEvent(kind: nkUnknown)
 
-    of '\r', '\n':  # Enter キー (CR または LF)
+        return KeyEvent(kind: nkEscape)
+
+    of '\r', '\n':
         return KeyEvent(kind: nkEnter)
 
-    else:  # 通常の文字キー
+    else:
         return KeyEvent(kind: nkChar, ch: buf[0])
