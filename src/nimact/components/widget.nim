@@ -49,7 +49,7 @@ type
 
   ## Widget variant object
   ## Fields vary based on `kind`:
-  ##   wkLabel     -> labelText, labelStyle
+  ##   wkLabel     -> labelText, labelStyle, placeholderText, placeholderStyle, showPlaceholder
   ##   wkVBox/HBox -> children, gap
   ##   wkCenter    -> centerW, centerH, centerChildren
   ##   wkHeader/F  -> barText, barStyle
@@ -61,6 +61,9 @@ type
     of wkLabel:
       labelText*: string
       labelStyle*: Style
+      placeholderText*: string
+      placeholderStyle*: Style
+      showPlaceholder*: bool
     of wkBox:
       boxW*, boxH*: int
       boxStyle*: Style
@@ -90,8 +93,15 @@ type
 # =============================================================================
 
 proc label*(text: string, fg: Color = defaultColor(),
-            bg: Color = defaultColor(), bold: bool = false): Widget =
-  Widget(kind: wkLabel, labelText: text, labelStyle: style(fg, bg, bold))
+            bg: Color = defaultColor(), bold: bool = false,
+            placeholder: string = "",
+            placeholderFg: Color = defaultColor(),
+            placeholderBg: Color = defaultColor(),
+            showPlaceholder: bool = false): Widget =
+  Widget(kind: wkLabel, labelText: text, labelStyle: style(fg, bg, bold),
+         placeholderText: placeholder,
+         placeholderStyle: style(placeholderFg, placeholderBg),
+         showPlaceholder: showPlaceholder)
 
 proc box*(w, h: int, style: Style = style(fg = colBlue),
           borderType: BorderStyle = bsRounded,
@@ -153,14 +163,38 @@ proc stringWidth(s: string): int =
   for r in s.runes:
       result += runeWidth(r)
 
+proc splitLines(s: string): seq[string] =
+  var start = 0
+  for i, c in s:
+    if c == '\n':
+      result.add(s[start ..< i])
+      start = i + 1
+  result.add(s[start .. ^1])
+
+proc wrapLineCount(text: string, maxWidth: int): int =
+  if maxWidth <= 0:
+    result = 1
+    for c in text:
+      if c == '\n': result += 1
+    return
+  for line in splitLines(text):
+    let w = stringWidth(line)
+    if w == 0:
+      result += 1
+    else:
+      result += (w + maxWidth - 1) div maxWidth
+
 ## Compute required size (width, height) for a widget.
 ## availableWidth: width passed from parent
 ## Returns: (required width, required height)
 proc measure*(w: Widget, availableWidth: int): (int, int) =
   case w.kind
   of wkLabel:
-    let wCount = stringWidth(w.labelText)
-    (wCount, 1)
+    let displayText = if w.showPlaceholder: w.placeholderText else: w.labelText
+    let maxW = max(1, availableWidth)
+    let wCount = min(stringWidth(displayText), maxW)
+    let hCount = wrapLineCount(displayText, maxW)
+    (wCount, hCount)
   of wkBox:
     (w.boxW, w.boxH)
   of wkVBox:
@@ -211,7 +245,38 @@ proc render*(w: Widget, buf: Buffer, x, y, width, height: int, parentStyle: Styl
     if w.labelStyle.bg.isDefault and not parentStyle.bg.isDefault:
         effectiveStyle.bg = parentStyle.bg
 
-    buf.drawString(x, y, w.labelText, effectiveStyle)
+    let displayText = if w.showPlaceholder: w.placeholderText else: w.labelText
+    var displayStyle = if w.showPlaceholder: w.placeholderStyle else: effectiveStyle
+    if displayStyle.bg.isDefault and not parentStyle.bg.isDefault:
+        displayStyle.bg = parentStyle.bg
+
+    let maxW = max(1, width)
+    var lineY = y
+    for line in splitLines(displayText):
+      var remaining = line
+      while true:
+        if runeLen(remaining) == 0:
+          lineY.inc
+          break
+        let lw = stringWidth(remaining)
+        if lw <= maxW:
+          if lineY < y + height:
+            buf.drawString(x, lineY, remaining, displayStyle)
+          lineY.inc
+          break
+        else:
+          var runeIdx = 0
+          var accW = 0
+          for r in remaining.runes:
+            let rw = runeWidth(r)
+            if runeIdx > 0 and accW + rw > maxW: break
+            accW += rw
+            runeIdx += 1
+          let chunk = remaining.runeSubStr(0, runeIdx)
+          if lineY < y + height:
+            buf.drawString(x, lineY, chunk, displayStyle)
+          lineY.inc
+          remaining = remaining.runeSubStr(runeIdx)
 
   of wkBox:
     buf.drawBox(x, y, w.boxW, w.boxH, w.boxStyle, w.boxBorder)
