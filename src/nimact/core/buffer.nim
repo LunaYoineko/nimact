@@ -256,8 +256,6 @@ proc runeWidth*(r: Rune): int =
         (cp >= 0x261E and cp <= 0x261E) or # ☞
         (cp >= 0x2640 and cp <= 0x2640) or # ♀
         (cp >= 0x2642 and cp <= 0x2642) or # ♂
-        (cp >= 0x2660 and cp <= 0x2661) or # ♠ ♡
-        (cp >= 0x2663 and cp <= 0x2666) or # ♣ ♦
         (cp >= 0x2669 and cp <= 0x266A) or # ♩ ♪
         (cp >= 0x266C and cp <= 0x266C) or # ♬
         (cp >= 0x266F and cp <= 0x266F) or # ♯
@@ -309,12 +307,14 @@ proc drawString*(buf: Buffer, x, y: int, str: string, style: Style = style()) =
         if rune.int == 0x1B:
             continue
         let w = runeWidth(rune)
-        if w == 2 and currX + 1 >= buf.width:
-            break
-            
+        
         buf.setCell(currX, y, newCell(rune.toUTF8, style))
         if w == 2:
             buf.setCell(currX + 1, y, newCell("", style))
+            
+        if w == 2 and currX + 1 >= buf.width:
+            buf.setCell(currX + 1, y, newCell("", style))
+            
         currX += w
 
 # =============================================================================
