@@ -60,25 +60,25 @@ let app = newApp()
 proc build(): Widget =
   vbox(
     # ヘッダーバー: アプリ名を白文字・青背景で表示
-    header("nimact v0.1.0", fg = colWhite, bg = colBlue, bold = true),
+    header("nimact examples v0.1.0", fg = colWhite, bg = colBlue, bold = true),
 
     # 中央寄せボックス (幅40、高さ10)
     center(40, 10,
       # タイトル (紫・太字)
-      label(" [ Counter Widget ] ", fg = colPurple, bold = true),
+      label(" [ カウンター ] ", fg = colPurple, bold = true),
       label(""),  # 空行
       # 説明テキスト
-      label("Press SPACE to increment counter.", fg = colText),
+      label("SPACE をおして加算", fg = colText),
       label(""),  # 空行
       # 現在のカウンター値 (緑・太字)
-      label("Current Count: " & $count, fg = colGreen, bold = true),
+      label("現在のカウント: " & $count, fg = colGreen, bold = true),
       label(""),  # 空行
       # プログレスバー (count を20で割った比率を表示)
       progress(count.float, max = 20.0, fg = colBlue)
     ),
 
     # フッターバー: 操作説明を薄い文字で表示
-    footer(" Q: Quit | SPACE: Increment ", fg = colTextMuted, bg = colBgDark)
+    footer(" Q: 終了 | SPACE: 加算 ", fg = colTextMuted, bg = colBgDark)
   )
 
 # =============================================================================

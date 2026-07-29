@@ -15,7 +15,7 @@ proc build(): Widget =
   vbox(
     header("Hello App", fg = colWhite, bg = colBlue, bold = true),
     center(40, 5,
-      label("Hello, World!", fg = colGreen, bold = true)
+      label("Hello, Nimact!", fg = colGreen, bold = true)
     ),
     footer("Q: Quit", fg = colTextMuted, bg = colBgDark)
   )

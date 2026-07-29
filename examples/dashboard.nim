@@ -37,15 +37,15 @@ let app = newApp()
 
 proc build(): Widget =
   vbox(
-    header(" Dashboard v0.1.0 ", fg = colWhite, bg = colBlue, bold = true),
+    header(" Dashboard Like App v0.1.0 ", fg = colWhite, bg = colBlue, bold = true),
 
     hbox(2,
       # --- 左カラム: 統計情報 ---
       vbox(1,
-        label(" [ Requests ] ", fg = colPurple, bold = true),
-        label("Total:  " & $reqCount, fg = colText),
-        label("Errors: " & $errCount, fg = colRed),
-        label("Active: " & $activeConns, fg = colCyan),
+        label(" [ リクエスト ] ", fg = colPurple, bold = true),
+        label("トータル:  " & $reqCount, fg = colText),
+        label("エラー: " & $errCount, fg = colRed),
+        label("アクティブ: " & $activeConns, fg = colCyan),
         spacer(1),
         label(" [ CPU ] ", fg = colPurple, bold = true),
         progress(cpuUsage, max = 100.0, fg = colGreen),
@@ -58,20 +58,20 @@ proc build(): Widget =
 
       # --- 右カラム: ステータス ---
       vbox(3,
-        label(" [ Status ] ", fg = colPurple, bold = true),
-        label("  Server:   ", fg = colText),
+        label(" [ ステータス ] ", fg = colPurple, bold = true),
+        label("  サーバー:   ", fg = colText),
         label("    ", fg = colGreen, bold = true),
-        label(" Running", fg = colGreen),
+        label(" 実行中", fg = colGreen),
         label("  Uptime:   ", fg = colText),
         label("    ", fg = colCyan, bold = true),
         label(" 2h 15m", fg = colCyan),
-        label("  Version:  ", fg = colText),
+        label("  バージョン:  ", fg = colText),
         label("    ", fg = colYellow, bold = true),
         label(" 0.1.0", fg = colYellow),
         spacer(1),
         label(" [ Log ] ", fg = colPurple, bold = true),
-        label("  Last request: OK", fg = colTextMuted),
-        label("  Next check:   5s", fg = colTextMuted),
+        label("  最後のリクエスト: OK", fg = colTextMuted),
+        label("  次のチェック:   5s", fg = colTextMuted),
       ),
     ),
 
