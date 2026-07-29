@@ -7,7 +7,6 @@ nimble.cache
 *.exe
 *.out
 *.app
-!examples/*.nim
 
 # OS
 .DS_Store

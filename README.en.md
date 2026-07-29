@@ -20,7 +20,7 @@ mkdir myapp && cd myapp
 nimble init
 
 # 2. Install nimact
-nimble install https://github.com/LunaYoineko/nimact
+nimble install nimact
 
 # 3. Add dependency to your .nimble file
 # Add the following to the dependencies section of myapp.nimble:
@@ -74,6 +74,10 @@ label("Colored", fg = colRed, bg = colBgCard)
 | `fg` | `Color` | Foreground color (default: terminal default) |
 | `bg` | `Color` | Background color |
 | `bold` | `bool` | Bold text |
+| `placeholder` | `string` | Placeholder text when no text is set |
+| `placeholderFg` | `Color` | Placeholder foreground color |
+| `placeholderBg` | `Color` | Placeholder background color |
+| `showPlaceholder` | `bool` | Show placeholder instead of text |
 
 ### vbox — Vertical layout
 
@@ -237,6 +241,7 @@ progress(5.0, max = 10.0, fg = colCyan)
 | `value` | `float` | Current value |
 | `max` | `float` | Maximum value (default: 1.0) |
 | `fg` | `Color` | Fill color |
+| `bg` | `Color` | Background color |
 
 ### separator — Divider line
 
@@ -259,15 +264,26 @@ app.onKey(' ', proc() = doSomething())
 app.onKey('q', proc() = app.quit())
 ```
 
+### Catch-all character keys
+
+To capture all character key input at once:
+
+```nim
+app.onAnyChar(proc(ch: string) =
+  echo "Pressed: " & ch
+)
+```
+
 ### Special keys
 
 ```nim
-app.onKey(nkUp,     proc() = moveUp())
-app.onKey(nkDown,   proc() = moveDown())
-app.onKey(nkLeft,   proc() = moveLeft())
-app.onKey(nkRight,  proc() = moveRight())
-app.onKey(nkEscape, proc() = app.quit())
-app.onKey(nkEnter,  proc() = submit())
+app.onKey(nkUp,       proc() = moveUp())
+app.onKey(nkDown,     proc() = moveDown())
+app.onKey(nkLeft,     proc() = moveLeft())
+app.onKey(nkRight,    proc() = moveRight())
+app.onKey(nkEscape,   proc() = app.quit())
+app.onKey(nkEnter,    proc() = submit())
+app.onKey(nkBackspace, proc() = delete())
 ```
 
 Available `KeyKind` values:
@@ -280,6 +296,7 @@ Available `KeyKind` values:
 | `nkRight` | → |
 | `nkEscape` | Esc |
 | `nkEnter` | Enter |
+| `nkBackspace` | Backspace |
 
 ## Color Palette
 

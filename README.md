@@ -74,6 +74,10 @@ label("Colored", fg = colRed, bg = colBgCard)
 | `fg` | `Color` | 前景色（デフォルト: ターミナルのデフォルト） |
 | `bg` | `Color` | 背景色 |
 | `bold` | `bool` | 太字にするか |
+| `placeholder` | `string` | テキストがないときに表示するプレースホルダー |
+| `placeholderFg` | `Color` | プレースホルダーの前景色 |
+| `placeholderBg` | `Color` | プレースホルダーの背景色 |
+| `showPlaceholder` | `bool` | プレースホルダーを表示するか |
 
 ### vbox — 縦並びレイアウト
 
@@ -237,6 +241,7 @@ progress(5.0, max = 10.0, fg = colCyan)
 | `value` | `float` | 現在値 |
 | `max` | `float` | 最大値（デフォルト: 1.0） |
 | `fg` | `Color` | 塗りつぶし部分の色 |
+| `bg` | `Color` | 背景色 |
 
 ### separator — 区切り線
 
@@ -259,15 +264,26 @@ app.onKey(' ', proc() = doSomething())
 app.onKey('q', proc() = app.quit())
 ```
 
+### 全文字キーのキャプチャ
+
+すべての文字キー入力を一括で受け取る場合:
+
+```nim
+app.onAnyChar(proc(ch: string) =
+  echo "Pressed: " & ch
+)
+```
+
 ### 特殊キー
 
 ```nim
-app.onKey(nkUp,     proc() = moveUp())
-app.onKey(nkDown,   proc() = moveDown())
-app.onKey(nkLeft,   proc() = moveLeft())
-app.onKey(nkRight,  proc() = moveRight())
-app.onKey(nkEscape, proc() = app.quit())
-app.onKey(nkEnter,  proc() = submit())
+app.onKey(nkUp,       proc() = moveUp())
+app.onKey(nkDown,     proc() = moveDown())
+app.onKey(nkLeft,     proc() = moveLeft())
+app.onKey(nkRight,    proc() = moveRight())
+app.onKey(nkEscape,   proc() = app.quit())
+app.onKey(nkEnter,    proc() = submit())
+app.onKey(nkBackspace, proc() = delete())
 ```
 
 利用可能な `KeyKind`:
@@ -280,6 +296,7 @@ app.onKey(nkEnter,  proc() = submit())
 | `nkRight` | → |
 | `nkEscape` | Esc |
 | `nkEnter` | Enter |
+| `nkBackspace` | Backspace |
 
 ## カラーパレット
 
