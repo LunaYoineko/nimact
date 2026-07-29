@@ -14,6 +14,7 @@ Thumbs.db
 examples/counter
 nimble.develop
 nimble.paths
+config.nims
 nimbledeps
 /tests/test_buffer
 /nimble.paths
