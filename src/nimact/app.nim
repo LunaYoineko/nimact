@@ -58,19 +58,32 @@ proc newApp*(): App =
 # =============================================================================
 
 ## Register a handler for a character key
-proc onKey*(app: App, ch: char, handler: proc()) =
+proc onKey*(app: App, ch: string, handler: proc()) =
     app.eventBus.onChar(ch, handler)
 
-## Register a handler for a special key (escape, enter, arrows, etc.)
+proc onKey*(app: App, ch: char, handler: proc()) =
+    app.eventBus.onChar($ch, handler)
+    
+proc onAnyChar*(app: App, handler: proc(ch: string)) =
+    app.eventBus.onAnyChar(handler)
+    
+proc onAnyChar*(app: App, handler: proc(ch: char)) =
+    app.eventBus.onAnyChar(proc(s: string) =
+        if s.len > 0:
+            handler(s[0])
+    )
+
+## Register a handler for a special key (escape, enter, arrows, backspace, etc.)
 proc onKey*(app: App, key: KeyKind, handler: proc()) =
-    case key
-    of nkEscape: app.eventBus.onEscape(handler)
-    of nkEnter: app.eventBus.onEnter(handler)
-    of nkUp: app.eventBus.onArrow(akUp, handler)
-    of nkDown: app.eventBus.onArrow(akDown, handler)
-    of nkLeft: app.eventBus.onArrow(akLeft, handler)
-    of nkRight: app.eventBus.onArrow(akRight, handler)
-    else: discard  # nkChar etc. handled via the char overload above
+        case key
+        of nkEscape: app.eventBus.onEscape(handler)
+        of nkEnter: app.eventBus.onEnter(handler)
+        of nkUp: app.eventBus.onArrow(akUp, handler)
+        of nkDown: app.eventBus.onArrow(akDown, handler)
+        of nkLeft: app.eventBus.onArrow(akLeft, handler)
+        of nkRight: app.eventBus.onArrow(akRight, handler)
+        of nkBackspace: app.eventBus.onChar("\x7f", handler)
+        else: discard  # nkChar etc. handled via the char overload above
 
 ## Exit the application
 proc quit*(app: App) =

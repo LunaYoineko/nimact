@@ -67,7 +67,7 @@ proc build(): Widget =
 
   var todoWidgets: seq[Widget]
 
-  todoWidgets.add(label(" [ TODO List ] ", fg = colPurple, bold = true))
+  todoWidgets.add(label(" [ TODO リスト ] ", fg = colPurple, bold = true))
   todoWidgets.add(spacer(1))
 
   for i, item in todos:
@@ -88,7 +88,7 @@ proc build(): Widget =
 
   if addingMode:
     todoWidgets.add(spacer(1))
-    todoWidgets.add(label("  > " & inputBuffer & "_", fg = colYellow, bold = true))
+    todoWidgets.add(label("  > " & inputBuffer & "_", fg = colWhite, bold = true))
     todoWidgets.add(label("    Enter: confirm | Esc: cancel", fg = colTextMuted))
 
   vbox(
@@ -139,46 +139,19 @@ app.onKey(nkEscape, proc() =
     app.quit()
 )
 
-app.onKey('\x7f', proc() =
+app.onKey(nkBackspace, proc() =
   if addingMode:
-    if inputBuffer.len > 0:
-      inputBuffer = inputBuffer[0 .. ^2]
+      discard inputBuffer.removeLastRune()
   else:
-    if todos.len > 0:
-      todos.delete(cursor)
-      if cursor >= todos.len and cursor > 0:
-        cursor = todos.len - 1
+          if todos.len > 0:
+              todos.delete(cursor)
+              if cursor >= todos.len and cursor > 0:
+                  cursor = todos.len - 1
 )
 
-# アルファベット入力 (追加モード)
-for c in 'a'..'z':
-  let ch = c
-  app.onKey(ch, proc() =
-    if addingMode and inputBuffer.len < 40: inputBuffer.add(ch)
-  )
-
-for c in 'A'..'Z':
-  let ch = c
-  app.onKey(ch, proc() =
-    if addingMode and inputBuffer.len < 40: inputBuffer.add(ch)
-  )
-
-# 数字入力
-for c in '0'..'9':
-  let ch = c
-  app.onKey(ch, proc() =
-    if addingMode and inputBuffer.len < 40: inputBuffer.add(ch)
-  )
-
-# 記号入力
-app.onKey('-', proc() =
-  if addingMode and inputBuffer.len < 40: inputBuffer.add('-')
-)
-app.onKey('_', proc() =
-  if addingMode and inputBuffer.len < 40: inputBuffer.add('_')
-)
-app.onKey('.', proc() =
-  if addingMode and inputBuffer.len < 40: inputBuffer.add('.')
+app.onAnyChar(proc(ch: string) =
+    if addingMode:
+        inputBuffer.add(ch)
 )
 
 app.onKey('q', proc() = app.quit())

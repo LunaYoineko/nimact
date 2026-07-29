@@ -194,12 +194,8 @@ proc renderDiff*(current, next: Buffer) =
             let cCell = if idx < current.cells.len: current.cells[idx] else: newCell()
             let nCell = next.cells[idx]
 
-            # empty cell (second half of wide char): erase with background color via ECH
+            # empty cell (second half of wide char): skip — terminal handles it
             if nCell.ch.len == 0:
-                if cCell != nCell:
-                    outBuf.add("\e[" & $(y + 1) & ";" & $(x + 1) & "H")
-                    outBuf.add(ansiStyle(nCell.style))
-                    outBuf.add("\e[1X")  # ECH: erase 1 cell with current SGR background
                 continue
 
             # only draw cells that changed

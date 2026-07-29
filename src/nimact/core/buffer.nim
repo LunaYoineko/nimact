@@ -142,6 +142,8 @@ proc runeWidth*(r: Rune): int =
         return 0
     # Wide characters (CJK, fullwidth, emoji)
     if (cp >= 0x1100 and cp <= 0x115F) or  # Hangul Jamo
+        (cp >= 0x3040 and cp <= 0x309F) or # ひらがな
+        (cp >= 0x30A0 and cp <= 0x30FF) or # カタカナ
         (cp >= 0x2E80 and cp <= 0xA4CF) or # CJK Radicals, Kanji, etc.
         (cp >= 0xAC00 and cp <= 0xD7A3) or # Hangul Syllables
         (cp >= 0xF900 and cp <= 0xFAFF) or # CJK Compatibility
@@ -285,6 +287,20 @@ proc runeWidth*(r: Rune): int =
         return 2
     return 1
 
+## Remove the last Unicode rune from a string (handles both full-width and half-width).
+## Returns true if a character was removed, false if the string was empty.
+proc removeLastRune*(s: var string): bool =
+    var runes: seq[Rune] = @[]
+    for r in s.runes:
+        runes.add(r)
+    if runes.len == 0:
+        return false
+    runes.setLen(runes.len - 1)
+    s = ""
+    for r in runes:
+        s.add(r.toUTF8)
+    return true
+
 proc drawString*(buf: Buffer, x, y: int, str: string, style: Style = style()) =
     var currX = x
     for rune in str.runes:
@@ -295,6 +311,7 @@ proc drawString*(buf: Buffer, x, y: int, str: string, style: Style = style()) =
         let w = runeWidth(rune)
         if w == 2 and currX + 1 >= buf.width:
             break
+            
         buf.setCell(currX, y, newCell(rune.toUTF8, style))
         if w == 2:
             buf.setCell(currX + 1, y, newCell("", style))

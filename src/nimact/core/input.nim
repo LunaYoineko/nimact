@@ -31,6 +31,7 @@ const STDIN_FILENO = 0.cint
 type
     KeyKind* = enum
         nkChar,     ## Normal character key
+        nkBackspace, ## Backspace key (\x7f or \x08)
         nkUp,       ## Arrow key up
         nkDown,     ## Arrow key down
         nkRight,    ## Arrow key right
@@ -42,7 +43,7 @@ type
 
     KeyEvent* = object
         kind*: KeyKind
-        ch*: char
+        ch*: string
 
 # =============================================================================
 # Key input reading
@@ -95,5 +96,22 @@ proc pollKey*(): KeyEvent =
     of '\r', '\n':
         return KeyEvent(kind: nkEnter)
 
+    of '\x7f', '\x08':
+        return KeyEvent(kind: nkBackspace)
+
     else:
-        return KeyEvent(kind: nkChar, ch: buf[0])
+        var chStr = $buf[0]
+        if (buf[0].byte and 0xC0) == 0xC0:
+            let firstByte = buf[0].byte
+            var expectedBytes = 1
+            if (firstByte and 0xE0) == 0xE0: expectedBytes = 2
+            elif (firstByte and 0xF0) == 0xF0: expectedBytes = 3
+            
+            for i in 1..expectedBytes:
+                var nextByte: array[1, char]
+                let n = c_read(STDIN_FILENO, nextByte[0].addr, 1)
+                if n > 0:
+                    chStr.add(nextByte[0])
+                else:
+                    break
+        return KeyEvent(kind: nkChar, ch: chStr)

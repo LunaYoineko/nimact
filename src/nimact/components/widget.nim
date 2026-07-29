@@ -144,10 +144,14 @@ proc separator*(fg: Color = defaultColor(), bg: Color = defaultColor()): Widget 
 
 proc spacer*(height: int = 1): Widget =
   Widget(kind: wkSpacer, spacerHeight: height)
-
+  
 # =============================================================================
 # Size calculation (measure)
 # =============================================================================
+
+proc stringWidth(s: string): int =
+  for r in s.runes:
+      result += runeWidth(r)
 
 ## Compute required size (width, height) for a widget.
 ## availableWidth: width passed from parent
@@ -155,9 +159,7 @@ proc spacer*(height: int = 1): Widget =
 proc measure*(w: Widget, availableWidth: int): (int, int) =
   case w.kind
   of wkLabel:
-    var wCount = 0
-    for r in w.labelText.runes:
-        wCount += runeWidth(r)
+    let wCount = stringWidth(w.labelText)
     (wCount, 1)
   of wkBox:
     (w.boxW, w.boxH)

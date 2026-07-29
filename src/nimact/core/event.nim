@@ -49,7 +49,9 @@ type
     ##   - escapeHandlers: Escape キーのハンドラ列
     ##   - enterHandlers: Enter キーのハンドラ列
     EventBus* = ref object
-        charHandlers*: Table[char, seq[EventCallback]]        ## 文字キーのハンドラ
+        charHandlers*: Table[string, seq[EventCallback]]        ## 文字キーのハンドラ
+        anyCharHandlers*: seq[proc(ch: string)]
+             ## 全ての文字キー共通ハンドラ
         escapeHandlers*: seq[EventCallback]                    ## Escape のハンドラ
         enterHandlers*: seq[EventCallback]                     ## Enter のハンドラ
         arrowHandlers*: Table[ArrowKey, seq[EventCallback]]   ## 矢印キーのハンドラ
@@ -62,7 +64,7 @@ type
 ## 初期状態ではハンドラは登録されていない
 proc newEventBus*(): EventBus =
     EventBus(
-        charHandlers: initTable[char, seq[EventCallback]](),
+        charHandlers: initTable[string, seq[EventCallback]](),
         arrowHandlers: initTable[ArrowKey, seq[EventCallback]]()
     )
 
@@ -76,11 +78,14 @@ proc newEventBus*(): EventBus =
 ##
 ## 同じ文字に複数ハンドラを登録できる (全て呼び出される)
 ## 使用例: bus.onChar('q', proc() = quit())
-proc onChar*(bus: EventBus, ch: char, handler: EventCallback) =
+proc onChar*(bus: EventBus, ch: string, handler: EventCallback) =
     if ch notin bus.charHandlers:
         bus.charHandlers[ch] = @[]
     bus.charHandlers[ch].add(handler)
 
+proc onAnyChar*(bus: EventBus, handler: proc(ch: string)) =
+    bus.anyCharHandlers.add(handler)
+    
 ## Escape キーのハンドラを登録する
 proc onEscape*(bus: EventBus, handler: EventCallback) =
     bus.escapeHandlers.add(handler)
@@ -115,16 +120,21 @@ proc onArrow*(bus: EventBus, arrow: ArrowKey, handler: EventCallback) =
 proc dispatch*(bus: EventBus, key: KeyEvent) =
     case key.kind
     of nkChar:
-        # 文字キー: 対応する文字のハンドラを全て呼び出す
         if key.ch in bus.charHandlers:
             for h in bus.charHandlers[key.ch]:
                 h()
+        for h in bus.anyCharHandlers:
+            h(key.ch)
     of nkEscape:
         for h in bus.escapeHandlers:
             h()
     of nkEnter:
         for h in bus.enterHandlers:
             h()
+    of nkBackspace:
+        if "\x7f" in bus.charHandlers:
+            for h in bus.charHandlers["\x7f"]:
+                h()
     of nkUp:
         if akUp in bus.arrowHandlers:
             for h in bus.arrowHandlers[akUp]:
