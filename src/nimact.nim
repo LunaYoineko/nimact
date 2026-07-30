@@ -25,5 +25,6 @@ import nimact/app
 import nimact/components/widget
 import nimact/core/buffer
 import nimact/core/event
+import nimact/core/term
 
-export app, widget, buffer, event
+export app, widget, buffer, event, term
