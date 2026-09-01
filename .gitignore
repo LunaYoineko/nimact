@@ -26,3 +26,4 @@ src/nimact/app
 tests/test_widget
 /tests/test_app
 /tests/test_input
+examples/gui_hello
