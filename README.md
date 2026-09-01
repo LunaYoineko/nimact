@@ -255,6 +255,29 @@ separator(fg = colTextMuted)
 spacer(2) # 2行分の空白
 ```
 
+### canvas — 低レベル直接描画
+
+固定サイズの領域に対して `Buffer` に直接描画できるウィジェットです。
+レイキャスティングやゲーム、グラフなど「1セル単位の描画」に使います。
+`draw` には領域の左上座標 `(x, y)` とサイズ `(w, h)` が渡されるので、
+`buf.setCell(x + px, y + py, cell)` で描画します。
+
+```nim
+proc drawGame(buf: Buffer, x, y, w, h: int) =
+  for px in 0 ..< w:
+    for py in 0 ..< h:
+      let ch = if (px + py) mod 2 == 0: "▓" else: "░"
+      buf.setCell(x + px, y + py, newCell(ch, style(fg = colCyan)))
+
+canvas(60, 20, drawGame)
+```
+
+| パラメータ | 型 | 説明 |
+|---|---|---|
+| `w` | `int` | キャンバスの幅 |
+| `h` | `int` | キャンバスの高さ |
+| `draw` | `proc(buf: Buffer, x, y, w, h: int)` | 描画コールバック |
+
 ## キーイベント
 
 ### 文字キー
@@ -297,6 +320,34 @@ app.onKey(nkBackspace, proc() = delete())
 | `nkEscape` | Esc |
 | `nkEnter` | Enter |
 | `nkBackspace` | Backspace |
+
+## 毎フレーム更新フック (onUpdate)
+
+ゲームロジック（移動・物理・タイマーなど）は描画と分離するため、
+`onUpdate` に登録します。`build()` の直前に毎フレーム呼ばれます。
+
+```nim
+app.onUpdate(proc() =
+  score = max(0, score - 1)  # 毎フレームスコア減衰
+)
+```
+
+## 長押しキー検知 (trackKey / isHeld)
+
+ターミナルはキー離しイベントを送りません。代わりに、押している間
+キーが繰り返し送られることを利用して「長押し」を検知します。
+キーリピートが `repeatDelay` 秒以内に再送され続ける間、`isHeld` が
+`true` を返します（離すとリピートが止まり、しばらくすると `false`）。
+
+```nim
+app.trackKey('w')
+
+app.onKey('w', proc() = move(0.1))     # 押下時: ワンステップ
+
+app.onUpdate(proc() =
+  if app.isHeld('w'): move(0.03)       # 押しっぱなし中: 毎フレーム移動
+)
+```
 
 ## カラーパレット
 
@@ -352,6 +403,19 @@ buf.drawString(10, 5, "Hello", style(fg = colGreen))
 
 ```nim
 buf.drawBox(5, 3, 30, 10, style(fg = colBlue), bsRounded)
+```
+
+### lerpColor — 色の線形補間
+
+2つの色を割合 `t`（0.0..1.0）で補間します。距離フォグや
+グラデーション表現に使えます。
+
+```nim
+proc fog(dist: float): Color =
+  # 近いほど白く、遠いほど背景色に近づける
+  lerpColor(colWhite, colBgDark, dist / 8.0)
+
+label("@", fg = fog(3.0))
 ```
 
 ## サンプル

@@ -96,8 +96,10 @@ proc enableRawMode*(): bool =
     # disable output post-processing
     raw.c_oflag = raw.c_oflag and not (OPOST)
 
-    # VMIN=0: return immediately even with no data
-    # VTIME=1: 100ms timeout when data is available
+    # VMIN=0, VTIME=1: a single read returns immediately when at least one
+    # byte is available, otherwise it times out after 100ms. pollKey() gates
+    # reads with select() first (never blocking the main loop); the 100ms
+    # window here is what lets multi-byte escape sequences arrive together.
     raw.c_cc[VMIN] = 0
     raw.c_cc[VTIME] = 1
 
@@ -111,6 +113,8 @@ proc enableRawMode*(): bool =
 
     # switch to alternate screen buffer and hide cursor
     stdout.write("\e[?1049h\e[?25l")
+    # enable kitty keyboard protocol: makes Shift+Enter / Ctrl+KEY distinguishable
+    stdout.write("\e[>1u")
     stdout.flushFile()
     return true
 
@@ -118,9 +122,27 @@ proc enableRawMode*(): bool =
 proc disableRawMode*() =
     if not rawModeEnabled: return
     rawModeEnabled = false
-    stdout.write("\e[?25h\e[?1049l")
+    # pop kitty keyboard protocol, then restore screen buffer and cursor
+    stdout.write("\e[<1u\e[?25h\e[?1049l")
     stdout.flushFile()
     discard tcsetattr(STDIN_FILENO, TCSAFLUSH, origTermios.addr)
+
+# =============================================================================
+# Kitty keyboard protocol
+# =============================================================================
+
+## Enable the kitty keyboard protocol (disambiguate escape codes).
+## Terminals that support it report modified keys (Shift+Enter, Ctrl+KEY, ...)
+## as CSI-u sequences (e.g. \e[13;2u = Shift+Enter).
+## Unsupported terminals ignore this escape sequence safely.
+proc enableKittyKeyboardProtocol*() =
+    stdout.write("\e[>1u")
+    stdout.flushFile()
+
+## Disable (pop) the kitty keyboard protocol.
+proc disableKittyKeyboardProtocol*() =
+    stdout.write("\e[<1u")
+    stdout.flushFile()
 
 ## Clear the entire screen (\e[2J)
 proc clearScreen*() =

@@ -373,3 +373,32 @@ suite "runeWidth extended emoji":
 
   test "regional indicator has width 2":
     check runeWidth(Rune(0x1F1FA)) == 2  # 🇺
+
+suite "lerpColor":
+
+  test "t=0.0 returns the first color":
+    let c = lerpColor(colRed, colBlue, 0.0)
+    check c.r == colRed.r
+    check c.g == colRed.g
+    check c.b == colRed.b
+
+  test "t=1.0 returns the second color":
+    let c = lerpColor(colRed, colBlue, 1.0)
+    check c.r == colBlue.r
+    check c.g == colBlue.g
+    check c.b == colBlue.b
+
+  test "t=0.5 is the exact midpoint":
+    # colBgDark = (30,34,42), colBgCard = (40,44,52)
+    let c = lerpColor(colBgDark, colBgCard, 0.5)
+    check c.r == 35
+    check c.g == 39
+    check c.b == 47
+
+  test "t is clamped to 0.0..1.0":
+    check lerpColor(colRed, colBlue, 2.0) == colBlue
+    check lerpColor(colRed, colBlue, -1.0) == colRed
+
+  test "result is never a default color":
+    let c = lerpColor(colRed, colBlue, 0.5)
+    check not c.isDefault

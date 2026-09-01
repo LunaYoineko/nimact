@@ -369,6 +369,40 @@ suite "box widget":
     check buf.getCell(0, 3).ch == "└"
     check buf.getCell(5, 3).ch == "┘"
 
+suite "canvas widget":
+
+  test "canvas kind is wkCanvas":
+    check canvas(10, 5, proc(buf: Buffer, x, y, w, h: int) = discard).kind == wkCanvas
+
+  test "canvas measure returns given dimensions":
+    let c = canvas(10, 5, proc(buf: Buffer, x, y, w, h: int) = discard)
+    let (ww, hh) = c.measure(80)
+    check ww == 10
+    check hh == 5
+
+  test "canvas render calls draw with position and size":
+    var calls = 0
+    var seenX, seenY, seenW, seenH = 0
+    let c = canvas(4, 3, proc(buf: Buffer, x, y, w, h: int) =
+      calls.inc
+      seenX = x; seenY = y; seenW = w; seenH = h)
+    let buf = newBuffer(20, 10)
+    c.render(buf, 5, 2, 20, 10)
+    check calls == 1
+    check seenX == 5
+    check seenY == 2
+    check seenW == 4
+    check seenH == 3
+
+  test "canvas render draws into buffer":
+    let c = canvas(2, 1, proc(buf: Buffer, x, y, w, h: int) =
+      buf.setCell(x, y, newCell("X", style(fg = colRed)))
+      buf.setCell(x + 1, y, newCell("Y", style(fg = colGreen))))
+    let buf = newBuffer(10, 3)
+    c.render(buf, 1, 1, 10, 3)
+    check buf.getCell(1, 1).ch == "X"
+    check buf.getCell(2, 1).ch == "Y"
+
 suite "widget kind field":
 
   test "label kind is wkLabel":

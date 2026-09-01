@@ -45,7 +45,8 @@ type
     wkFooter,     ## footer bar (full-width)
     wkProgress,   ## progress bar
     wkSeparator,  ## horizontal divider
-    wkSpacer      ## empty space
+    wkSpacer,     ## empty space
+    wkCanvas      ## low-level drawing area
 
   ## Widget variant object
   ## Fields vary based on `kind`:
@@ -87,6 +88,9 @@ type
       sepStyle*: Style
     of wkSpacer:
       spacerHeight*: int
+    of wkCanvas:
+      canvasW*, canvasH*: int
+      canvasDraw*: proc(buf: Buffer, x, y, w, h: int)
 
 # =============================================================================
 # Builder functions
@@ -154,6 +158,13 @@ proc separator*(fg: Color = defaultColor(), bg: Color = defaultColor()): Widget 
 
 proc spacer*(height: int = 1): Widget =
   Widget(kind: wkSpacer, spacerHeight: height)
+
+## Create a fixed-size area that draws directly into the Buffer.
+## The draw callback receives the top-left position (x, y) and the
+## canvas size (w, h); use buf.setCell(x + px, y + py, cell) to draw.
+## Useful for pixel-per-cell rendering (raycasting, games, charts, etc.).
+proc canvas*(w, h: int, draw: proc(buf: Buffer, x, y, w, h: int)): Widget =
+  Widget(kind: wkCanvas, canvasW: w, canvasH: h, canvasDraw: draw)
   
 # =============================================================================
 # Size calculation (measure)
@@ -229,6 +240,8 @@ proc measure*(w: Widget, availableWidth: int): (int, int) =
     (availableWidth, 1)
   of wkSpacer:
     (0, w.spacerHeight)
+  of wkCanvas:
+    (w.canvasW, w.canvasH)
 
 # =============================================================================
 # Rendering (render)
@@ -411,3 +424,7 @@ proc render*(w: Widget, buf: Buffer, x, y, width, height: int, parentStyle: Styl
 
   of wkSpacer:
     discard  # no drawing; just reserves space
+
+  of wkCanvas:
+    # Delegate all drawing to the user callback with absolute coordinates
+    w.canvasDraw(buf, x, y, w.canvasW, w.canvasH)

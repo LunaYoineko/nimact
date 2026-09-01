@@ -71,6 +71,18 @@ proc style*(fg: Color = defaultColor(), bg: Color = defaultColor(),
             bold: bool = false, dim: bool = false, italic: bool = false, underline: bool = false, reverse: bool = false): Style =
     Style(fg: fg, bg: bg, bold: bold, dim: dim, italic: italic, underline: underline, reverse: reverse)
 
+## Linearly interpolate between two colors.
+## t=0.0 returns a, t=1.0 returns b. t is clamped to 0.0..1.0.
+## Useful for distance fog, gradients, and dynamic theming.
+proc lerpColor*(a, b: Color, t: float): Color =
+    let t = clamp(t, 0.0, 1.0)
+    Color(
+        r: uint8(a.r.float + (b.r.float - a.r.float) * t),
+        g: uint8(a.g.float + (b.g.float - a.g.float) * t),
+        b: uint8(a.b.float + (b.b.float - a.b.float) * t),
+        isDefault: false
+    )
+
 # =============================================================================
 # Cell type: single buffer cell
 # =============================================================================
@@ -121,6 +133,7 @@ proc getCell*(buf: Buffer, x, y: int): Cell =
 ## Draw a string into the buffer.
 ## Characters exceeding the right edge are truncated.
 import unicode
+import std/math
 
 ## Character width detection (0=zero-width, 1=narrow, 2=wide)
 proc runeWidth*(r: Rune): int =

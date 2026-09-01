@@ -48,13 +48,18 @@ type
     ##   - arrowHandlers: 矢印キー → ハンドラ列
     ##   - escapeHandlers: Escape キーのハンドラ列
     ##   - enterHandlers: Enter キーのハンドラ列
+    ##   - modKeyHandlers: 修飾キー付き特殊キー → ハンドラ列 (例: Shift+Enter)
     EventBus* = ref object
         charHandlers*: Table[string, seq[EventCallback]]        ## 文字キーのハンドラ
         anyCharHandlers*: seq[proc(ch: string)]
              ## 全ての文字キー共通ハンドラ
+        keyObservers*: seq[proc(ev: KeyEvent)]
+             ## 全イベント共通のオブザーバ (press/repeat/release の区別などに使用)
         escapeHandlers*: seq[EventCallback]                    ## Escape のハンドラ
         enterHandlers*: seq[EventCallback]                     ## Enter のハンドラ
         arrowHandlers*: Table[ArrowKey, seq[EventCallback]]   ## 矢印キーのハンドラ
+        modKeyHandlers*: Table[KeyKind, Table[KeyModifier, seq[EventCallback]]]
+             ## 修飾キー付き特殊キーのハンドラ (Shift+Enter, Ctrl+Enter, ...)
 
 # =============================================================================
 # EventBus 生成
@@ -65,7 +70,8 @@ type
 proc newEventBus*(): EventBus =
     EventBus(
         charHandlers: initTable[string, seq[EventCallback]](),
-        arrowHandlers: initTable[ArrowKey, seq[EventCallback]]()
+        arrowHandlers: initTable[ArrowKey, seq[EventCallback]](),
+        modKeyHandlers: initTable[KeyKind, Table[KeyModifier, seq[EventCallback]]]()
     )
 
 # =============================================================================
@@ -85,6 +91,11 @@ proc onChar*(bus: EventBus, ch: string, handler: EventCallback) =
 
 proc onAnyChar*(bus: EventBus, handler: proc(ch: string)) =
     bus.anyCharHandlers.add(handler)
+
+## 全ての KeyEvent に反応するオブザーバを登録する
+## press / repeat / release のイベント種別も受け取れる
+proc onAnyKey*(bus: EventBus, handler: proc(ev: KeyEvent)) =
+    bus.keyObservers.add(handler)
     
 ## Escape キーのハンドラを登録する
 proc onEscape*(bus: EventBus, handler: EventCallback) =
@@ -102,9 +113,63 @@ proc onArrow*(bus: EventBus, arrow: ArrowKey, handler: EventCallback) =
         bus.arrowHandlers[arrow] = @[]
     bus.arrowHandlers[arrow].add(handler)
 
+## 修飾キー付き特殊キーのハンドラを登録する
+## key: 対象の特殊キー (nkEnter, nkEscape, nkBackspace, 矢印キー等)
+## modifier: 修飾キー (kmShift, kmCtrl, kmShiftCtrl)
+## handler: キー押下時に呼び出されるコールバック
+##
+## 修飾キー付きハンドラが登録されると、そのキーは通常のハンドラと
+## 区別して処理される (例: Shift+Enter は Enter とは別の動作になる)
+proc onModKey*(bus: EventBus, key: KeyKind, modifier: KeyModifier, handler: EventCallback) =
+    if key notin bus.modKeyHandlers:
+        bus.modKeyHandlers[key] = initTable[KeyModifier, seq[EventCallback]]()
+    if modifier notin bus.modKeyHandlers[key]:
+        bus.modKeyHandlers[key][modifier] = @[]
+    bus.modKeyHandlers[key][modifier].add(handler)
+
+## Shift+<特殊キー> のハンドラを登録する (例: Shift+Enter)
+proc onShiftKey*(bus: EventBus, key: KeyKind, handler: EventCallback) =
+    bus.onModKey(key, kmShift, handler)
+
+## Ctrl+<特殊キー> のハンドラを登録する (例: Ctrl+Enter)
+proc onCtrlKey*(bus: EventBus, key: KeyKind, handler: EventCallback) =
+    bus.onModKey(key, kmCtrl, handler)
+
+## Shift+Ctrl+<特殊キー> のハンドラを登録する
+proc onShiftCtrlKey*(bus: EventBus, key: KeyKind, handler: EventCallback) =
+    bus.onModKey(key, kmShiftCtrl, handler)
+
+## Ctrl+<文字> のハンドラを登録する (例: Ctrl+L, Ctrl+C)
+## 文字は対応する制御文字 (0x01..0x1A) に変換されて登録される
+proc onCtrlKey*(bus: EventBus, ch: string, handler: EventCallback) =
+    if ch.len == 1:
+        let c = ch[0]
+        if c in 'a' .. 'z':
+            bus.onChar($char(ord(c) - ord('a') + 1), handler)
+            return
+        if c in 'A' .. 'Z':
+            bus.onChar($char(ord(c) - ord('A') + 1), handler)
+            return
+    bus.onChar(ch, handler)
+
 # =============================================================================
 # イベントディスパッチ
 # =============================================================================
+
+## 修飾キー付き特殊キー (Enter/Escape/Backspace/矢印) をディスパッチする
+##
+## 修飾キー専用ハンドラが登録されていれば「それだけ」を呼び出す
+## (通常のハンドラは呼び出さない: Shift+Enter と Enter を区別するため)。
+## 登録がなければ通常のハンドラ列にフォールバックする。
+proc dispatchModKey(bus: EventBus, keyKind: KeyKind, modifier: KeyModifier,
+                    defaultHandlers: seq[EventCallback]) =
+    if modifier != kmNone and keyKind in bus.modKeyHandlers:
+        if modifier in bus.modKeyHandlers[keyKind]:
+            for h in bus.modKeyHandlers[keyKind][modifier]:
+                h()
+            return
+    for h in defaultHandlers:
+        h()
 
 ## KeyEvent を受け取り、対応するハンドラを全て呼び出す
 ##
@@ -112,7 +177,8 @@ proc onArrow*(bus: EventBus, arrow: ArrowKey, handler: EventCallback) =
 ##   1. key.kind に応じてハンドラテーブルを検索
 ##   2. 見つかったハンドラを全て順番に呼び出す
 ##   3. nkChar の場合は key.ch で文字キーのハンドラを検索
-##   4. nkNone, nkUnknown の場合は何もしない
+##   4. 修飾キー付きの場合は修飾キー専用ハンドラを優先する
+##   5. nkNone, nkUnknown の場合は何もしない
 ##
 ## 呼び出し順序:
 ##   - 登録順 (FIFO) で呼び出される
@@ -126,29 +192,26 @@ proc dispatch*(bus: EventBus, key: KeyEvent) =
         for h in bus.anyCharHandlers:
             h(key.ch)
     of nkEscape:
-        for h in bus.escapeHandlers:
-            h()
+        bus.dispatchModKey(nkEscape, key.modifier, bus.escapeHandlers)
     of nkEnter:
-        for h in bus.enterHandlers:
-            h()
+        bus.dispatchModKey(nkEnter, key.modifier, bus.enterHandlers)
     of nkBackspace:
-        if "\x7f" in bus.charHandlers:
-            for h in bus.charHandlers["\x7f"]:
-                h()
+        bus.dispatchModKey(nkBackspace, key.modifier,
+                           bus.charHandlers.getOrDefault("\x7f", newSeq[EventCallback]()))
     of nkUp:
-        if akUp in bus.arrowHandlers:
-            for h in bus.arrowHandlers[akUp]:
-                h()
+        bus.dispatchModKey(nkUp, key.modifier,
+                           bus.arrowHandlers.getOrDefault(akUp, newSeq[EventCallback]()))
     of nkDown:
-        if akDown in bus.arrowHandlers:
-            for h in bus.arrowHandlers[akDown]:
-                h()
+        bus.dispatchModKey(nkDown, key.modifier,
+                           bus.arrowHandlers.getOrDefault(akDown, newSeq[EventCallback]()))
     of nkLeft:
-        if akLeft in bus.arrowHandlers:
-            for h in bus.arrowHandlers[akLeft]:
-                h()
+        bus.dispatchModKey(nkLeft, key.modifier,
+                           bus.arrowHandlers.getOrDefault(akLeft, newSeq[EventCallback]()))
     of nkRight:
-        if akRight in bus.arrowHandlers:
-            for h in bus.arrowHandlers[akRight]:
-                h()
+        bus.dispatchModKey(nkRight, key.modifier,
+                           bus.arrowHandlers.getOrDefault(akRight, newSeq[EventCallback]()))
     else: discard  # nkNone, nkUnknown は無視
+
+    # 全イベント共通オブザーバ (trackKey の press/repeat/release 更新など)
+    for obs in bus.keyObservers:
+        obs(key)
