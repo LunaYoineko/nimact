@@ -163,6 +163,9 @@ when isWayland:
 # =============================================================================
 
 when not isWayland:
+  const
+    libX11* = "libX11.so.6"
+
   type
     XDisplay* = pointer
     XWindow* = culong
