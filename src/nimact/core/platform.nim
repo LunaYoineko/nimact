@@ -70,6 +70,9 @@ when isWayland:
   proc wlFlushBuffer*(win: WlSurface)
     {.importc: "wl_flush_buffer", dynlib: libShim.}
 
+  proc wlResizeBuffer*(win: WlSurface, width, height: cint)
+    {.importc: "wl_resize_buffer", dynlib: libShim.}
+
   proc wlGetFd*(win: WlSurface): cint
     {.importc: "wl_get_fd", dynlib: libShim.}
 
@@ -101,12 +104,22 @@ when isWayland:
     wlCloseWindow(win.window)
 
   proc flush*(win: PlatformWindow) =
+    # Copy rendered pixels to SHM buffer
+    var w: cint
+    var h: cint
+    let shmPtr = wlGetPixels(win.window, w, h)
+    if shmPtr != nil:
+      let winPixels = win.pixels.len
+      let shmPixels = w.int * h.int
+      let pixelCount = min(winPixels, shmPixels)
+      copyMem(shmPtr, win.pixels[0].addr, pixelCount * sizeof(uint32))
     wlFlushBuffer(win.window)
 
   proc resize*(win: PlatformWindow, width, height: int) =
     win.width = width
     win.height = height
     win.pixels.setLen(width * height)
+    wlResizeBuffer(win.window, width.cint, height.cint)
 
   proc pollEvent*(win: PlatformWindow): GuiEvent =
     result = GuiEvent(kind: geNone)
@@ -146,7 +159,7 @@ when isWayland:
         of 8:  # EVT_EXPOSE
           result = GuiEvent(kind: geExpose)
         of 100:  # EVT_FRAME
-          result = GuiEvent(kind: geNone)
+          result = GuiEvent(kind: geExpose)  # trigger redraw
         else:
           result = GuiEvent(kind: geNone)
       else:
@@ -157,6 +170,22 @@ when isWayland:
       result = char(sym)
     else:
       result = char(0)
+
+  # Key symbols (X11-compatible)
+  const
+    XK_Escape* = 0xff1b
+    XK_Return* = 0xff0d
+    XK_BackSpace* = 0xff08
+    XK_Tab* = 0xff09
+    XK_Up* = 0xff52
+    XK_Down* = 0xff54
+    XK_Left* = 0xff51
+    XK_Right* = 0xff53
+    XK_Home* = 0xff50
+    XK_End* = 0xff57
+    XK_Delete* = 0xffff
+    XK_Shift_L* = 0xffe1
+    XK_Control_L* = 0xffe3
 
 # =============================================================================
 # X11 実装

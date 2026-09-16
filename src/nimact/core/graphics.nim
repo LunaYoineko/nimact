@@ -34,7 +34,7 @@ proc hex*(color: uint32): Color {.inline.} =
   )
 
 proc toUInt32*(c: Color): uint32 {.inline.} =
-  ## Convert to BGRA format (X11 native)
+  ## Convert to BGRA format (native for most Wayland compositors)
   uint32(c.b) or (uint32(c.g) shl 8) or (uint32(c.r) shl 16) or (uint32(c.a) shl 24)
 
 # =============================================================================

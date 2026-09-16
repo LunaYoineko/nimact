@@ -113,6 +113,7 @@ proc processEvents*(app: GuiApp, handler: GuiEventHandler = nil) =
       if handler != nil and handler.onMouseMove != nil:
         handler.onMouseMove(ev.mouseX, ev.mouseY)
     of geResize:
+      app.window.resize(ev.width, ev.height)
       app.buffer = newPixelBuffer(ev.width, ev.height)
       app.graphics = newGraphicsContext(app.buffer)
       app.needsRedraw = true
@@ -135,14 +136,6 @@ proc renderFrame*(app: GuiApp, build: proc(): Widget) =
   # Build widget tree
   let root = build()
 
-  # Measure and render
-  let constraints = LayoutConstraints(
-    minWidth: app.window.width,
-    maxWidth: app.window.width,
-    minHeight: app.window.height,
-    maxHeight: app.window.height
-  )
-  let size = root.measure(constraints)
   root.render(app.graphics, 0, 0, app.window.width, app.window.height)
 
   # Flush to window
@@ -157,12 +150,6 @@ proc renderOnce*(app: GuiApp, build: proc(): Widget) =
   ## Render a single frame without the event loop
   app.buffer.clear(colBgDark)
   let root = build()
-  let constraints = LayoutConstraints(
-    minWidth: app.window.width,
-    maxWidth: app.window.width,
-    minHeight: app.window.height,
-    maxHeight: app.window.height
-  )
   root.render(app.graphics, 0, 0, app.window.width, app.window.height)
   block:
     let count = min(app.window.pixels.len, app.buffer.pixels.len)
@@ -175,13 +162,17 @@ proc renderOnce*(app: GuiApp, build: proc(): Widget) =
 # =============================================================================
 
 proc run*(app: GuiApp, build: proc(): Widget,
-          handler: GuiEventHandler = nil) =
+           handler: GuiEventHandler = nil) =
   ## Start the GUI application main loop
   ##
   ## build: Called each frame; returns the widget tree to render
   ## handler: Optional event handler for keyboard/mouse events
   app.running = true
   app.needsRedraw = true
+
+  # Process initial events (Wayland configure) before first render
+  app.processEvents(handler)
+  app.renderFrame(build)
 
   let fps = app.frameRate
   let frameTimeMs = 1000 div fps

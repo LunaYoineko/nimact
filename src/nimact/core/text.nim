@@ -327,6 +327,9 @@ proc measureText*(font: Font, text: string): (int, int) =
 proc measureTextWidth*(font: Font, text: string): int =
   font.measureText(text)[0]
 
+proc measureTextHeight*(font: Font, text: string): int =
+  font.measureText(text)[1]
+
 proc lineHeight*(font: Font): int =
   font.size + font.size div 4
 

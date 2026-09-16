@@ -43,6 +43,9 @@ void *wl_get_pixels(void *win, int *width, int *height);
 /* Flush the pixel buffer to the Wayland surface */
 void wl_flush_buffer(void *win);
 
+/* Resize the SHM buffer to match new window dimensions */
+void wl_resize_buffer(void *win, int width, int height);
+
 /* Get the Wayland display file descriptor */
 int wl_get_fd(void *win);
 

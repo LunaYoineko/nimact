@@ -12,8 +12,8 @@
 ##   - Paint: GraphicsContext に描画
 ## =============================================================================
 
-import std/tables
 import std/strutils
+import std/sequtils
 import ../core/graphics
 import ../core/text
 
@@ -27,7 +27,8 @@ type
     wkCenter, wkExpanded, wkSpacer,
     wkButton, wkGestureDetector, wkScaffold,
     wkSizedBox, wkPadding, wkAlign, wkCard,
-    wkProgressBar, wkImage
+    wkProgressBar, wkImage,
+    wkDivider, wkCheckbox, wkSwitch, wkSlider, wkTextField
 
   Insets* = object
     top*, right*, bottom*, left*: int
@@ -162,6 +163,41 @@ type
     of wkImage:
       imgData*: seq[uint32]
       imgWidth*, imgHeight*: int
+    of wkDivider:
+      divThickness*: int
+      divColor*: Color
+      divVertical*: bool
+    of wkCheckbox:
+      chkValue*: bool
+      chkOnChanged*: proc(checked: bool)
+      chkLabel*: string
+      chkActiveColor*: Color
+      chkCheckColor*: Color
+    of wkSwitch:
+      swValue*: bool
+      swOnChanged*: proc(value: bool)
+      swActiveColor*: Color
+      swThumbColor*: Color
+      swTrackColor*: Color
+    of wkSlider:
+      sldValue*: float
+      sldMin*, sldMax*: float
+      sldOnChanged*: proc(value: float)
+      sldActiveColor*: Color
+      sldThumbColor*: Color
+      sldTrackColor*: Color
+      sldThumbRadius*: int
+    of wkTextField:
+      tfText*: string
+      tfOnChanged*: proc(text: string)
+      tfOnSubmitted*: proc(text: string)
+      tfPlaceholder*: string
+      tfStyle*: TextStyle
+      tfMaxLines*: int
+      tfMaxLength*: int
+      tfObscureText*: bool
+      tfReadOnly*: bool
+      tfFocused*: bool
 
 # =============================================================================
 # Insets constructors
@@ -324,6 +360,54 @@ proc progressBar*(value: float,
          pbHeight: height, pbColor: color, pbTrackColor: trackColor,
          pbRadius: radius)
 
+proc divider*(thickness: int = 1,
+              color: Color = colTextMuted,
+              vertical: bool = false): Widget =
+  Widget(kind: wkDivider, divThickness: thickness, divColor: color, divVertical: vertical)
+
+proc checkbox*(value: bool = false,
+               onChanged: proc(checked: bool) = nil,
+               label: string = "",
+               activeColor: Color = colBlue,
+               checkColor: Color = colWhite): Widget =
+  Widget(kind: wkCheckbox, chkValue: value, chkOnChanged: onChanged,
+         chkLabel: label, chkActiveColor: activeColor, chkCheckColor: checkColor)
+
+proc switch*(value: bool = false,
+             onChanged: proc(value: bool) = nil,
+             activeColor: Color = colBlue,
+             thumbColor: Color = colWhite,
+             trackColor: Color = colBgFocus): Widget =
+  Widget(kind: wkSwitch, swValue: value, swOnChanged: onChanged,
+         swActiveColor: activeColor, swThumbColor: thumbColor, swTrackColor: trackColor)
+
+proc slider*(value: float = 0.0,
+             min: float = 0.0,
+             max: float = 1.0,
+             onChanged: proc(value: float) = nil,
+             activeColor: Color = colBlue,
+             thumbColor: Color = colWhite,
+             trackColor: Color = colBgFocus,
+             thumbRadius: int = 12): Widget =
+  Widget(kind: wkSlider, sldValue: clamp(value, min, max), sldMin: min, sldMax: max,
+         sldOnChanged: onChanged, sldActiveColor: activeColor,
+         sldThumbColor: thumbColor, sldTrackColor: trackColor,
+         sldThumbRadius: thumbRadius)
+
+proc textField*(text: string = "",
+                onChanged: proc(text: string) = nil,
+                onSubmitted: proc(text: string) = nil,
+                placeholder: string = "",
+                style: TextStyle = textStyle(),
+                maxLines: int = 1,
+                maxLength: int = -1,
+                obscureText: bool = false,
+                readOnly: bool = false): Widget =
+  Widget(kind: wkTextField, tfText: text, tfOnChanged: onChanged,
+         tfOnSubmitted: onSubmitted, tfPlaceholder: placeholder,
+         tfStyle: style, tfMaxLines: maxLines, tfMaxLength: maxLength,
+         tfObscureText: obscureText, tfReadOnly: readOnly, tfFocused: false)
+
 # =============================================================================
 # Default font (shared across widgets)
 # =============================================================================
@@ -385,36 +469,116 @@ proc measure*(widget: Widget, constraints: LayoutConstraints): LayoutSize =
     )
 
   of wkRow:
-    var totalW = 0
+    # Two-pass flex layout for Row
+    var children = widget.rowChildren
+    let spacing = widget.rowSpacing
+    let childCount = children.len
+    
+    # First pass: measure non-Expanded children
+    var totalFixedW = 0
     var maxH = 0
-    let childCount = widget.rowChildren.len
-    for i, child in widget.rowChildren:
-      let childConstraints = LayoutConstraints(
-        minWidth: 0, maxWidth: constraints.maxWidth,
-        minHeight: constraints.minHeight, maxHeight: constraints.maxHeight
-      )
-      let sz = child.measure(childConstraints)
-      totalW += sz.width
-      if i > 0: totalW += widget.rowSpacing
-      maxH = max(maxH, sz.height)
+    var totalFlex = 0
+    var expandedIndices: seq[int] = @[]
+    var expandedFlexes: seq[int] = @[]
+    
+    var sizes: seq[LayoutSize] = newSeq[LayoutSize](childCount)
+    
+    for i, child in children:
+      if child.kind == wkExpanded:
+        totalFlex += child.expFlex
+        expandedIndices.add(i)
+        expandedFlexes.add(child.expFlex)
+      else:
+        let sz = child.measure(LayoutConstraints(
+          minWidth: 0, maxWidth: constraints.maxWidth,
+          minHeight: constraints.minHeight, maxHeight: constraints.maxHeight
+        ))
+        sizes[i] = sz
+        totalFixedW += sz.width
+        maxH = max(maxH, sz.height)
+    
+    totalFixedW += spacing * max(0, childCount - 1)
+    
+    # Calculate available space for Expanded children
+    let availableW = max(0, constraints.maxWidth - totalFixedW)
+    var flexUnit = 0
+    if totalFlex > 0:
+      flexUnit = availableW div totalFlex
+    
+    # Second pass: measure Expanded children with allocated space
+    for idx, i in expandedIndices:
+      let child = children[i]
+      let allocatedW = flexUnit * expandedFlexes[idx]
+      if child.expChild != nil:
+        let childConstraints = LayoutConstraints(
+          minWidth: allocatedW, maxWidth: allocatedW,
+          minHeight: constraints.minHeight, maxHeight: constraints.maxHeight
+        )
+        let sz = child.expChild.measure(childConstraints)
+        sizes[i] = sz
+        maxH = max(maxH, sz.height)
+      else:
+        sizes[i] = LayoutSize(width: allocatedW, height: 0)
+    
+    let totalW = totalFixedW + availableW
     LayoutSize(
       width: clamp(totalW, constraints.minWidth, constraints.maxWidth),
       height: clamp(maxH, constraints.minHeight, constraints.maxHeight)
     )
 
   of wkColumn:
-    var totalH = 0
+    # Two-pass flex layout for Column
+    var children = widget.colChildren
+    let spacing = widget.colSpacing
+    let childCount = children.len
+    
+    # First pass: measure non-Expanded children
+    var totalFixedH = 0
     var maxW = 0
-    let childCount = widget.colChildren.len
-    for i, child in widget.colChildren:
-      let childConstraints = LayoutConstraints(
-        minWidth: constraints.minWidth, maxWidth: constraints.maxWidth,
-        minHeight: 0, maxHeight: constraints.maxHeight - totalH
-      )
-      let sz = child.measure(childConstraints)
-      maxW = max(maxW, sz.width)
-      totalH += sz.height
-      if i > 0: totalH += widget.colSpacing
+    var totalFlex = 0
+    var expandedIndices: seq[int] = @[]
+    var expandedFlexes: seq[int] = @[]
+    
+    var sizes: seq[LayoutSize] = newSeq[LayoutSize](childCount)
+    
+    for i, child in children:
+      if child.kind == wkExpanded:
+        totalFlex += child.expFlex
+        expandedIndices.add(i)
+        expandedFlexes.add(child.expFlex)
+      else:
+        let sz = child.measure(LayoutConstraints(
+          minWidth: constraints.minWidth, maxWidth: constraints.maxWidth,
+          minHeight: 0, maxHeight: constraints.maxHeight
+        ))
+        sizes[i] = sz
+        totalFixedH += sz.height
+        maxW = max(maxW, sz.width)
+    
+    totalFixedH += spacing * max(0, childCount - 1)
+    
+    # Calculate available space for Expanded children
+    let availableH = max(0, constraints.maxHeight - totalFixedH)
+    var flexUnit = 0
+    if totalFlex > 0:
+      flexUnit = availableH div totalFlex
+    
+    # Second pass: measure Expanded children with allocated space
+    for idx, i in expandedIndices:
+      let child = children[i]
+      let allocatedH = flexUnit * expandedFlexes[idx]
+      if child.expChild != nil:
+        let childConstraints = LayoutConstraints(
+          minWidth: constraints.minWidth, maxWidth: constraints.maxWidth,
+          minHeight: allocatedH, maxHeight: allocatedH
+        )
+        let sz = child.expChild.measure(childConstraints)
+        sizes[i] = sz
+        maxW = max(maxW, sz.width)
+      else:
+        sizes[i] = LayoutSize(width: 0, height: allocatedH)
+    
+    let totalH = totalFixedH + availableH
     LayoutSize(
       width: clamp(maxW, constraints.minWidth, constraints.maxWidth),
       height: clamp(totalH, constraints.minHeight, constraints.maxHeight)
@@ -563,6 +727,50 @@ proc measure*(widget: Widget, constraints: LayoutConstraints): LayoutSize =
       height: clamp(widget.pbHeight, constraints.minHeight, constraints.maxHeight)
     )
 
+  of wkDivider:
+    if widget.divVertical:
+      LayoutSize(
+        width: clamp(widget.divThickness, constraints.minWidth, constraints.maxWidth),
+        height: clamp(max(constraints.minHeight, 20), constraints.minHeight, constraints.maxHeight)
+      )
+    else:
+      LayoutSize(
+        width: clamp(max(constraints.minWidth, 100), constraints.minWidth, constraints.maxWidth),
+        height: clamp(widget.divThickness, constraints.minHeight, constraints.maxHeight)
+      )
+
+  of wkCheckbox:
+    let font = defaultFont()
+    let (_, textH) = font.measureText(widget.chkLabel)
+    let textW = font.measureTextWidth(widget.chkLabel)
+    let boxSize = 24
+    LayoutSize(
+      width: clamp(boxSize + 8 + textW, constraints.minWidth, constraints.maxWidth),
+      height: clamp(max(boxSize, textH), constraints.minHeight, constraints.maxHeight)
+    )
+
+  of wkSwitch:
+    LayoutSize(
+      width: clamp(56, constraints.minWidth, constraints.maxWidth),
+      height: clamp(32, constraints.minHeight, constraints.maxHeight)
+    )
+
+  of wkSlider:
+    LayoutSize(
+      width: clamp(max(constraints.minWidth, 200), constraints.minWidth, constraints.maxWidth),
+      height: clamp(max(48, widget.sldThumbRadius * 2 + 8), constraints.minHeight, constraints.maxHeight)
+    )
+
+  of wkTextField:
+    let font = defaultFont()
+    let (_, textH) = font.measureText("Ay")
+    let lineH = textH + 4
+    let tfHeight = lineH * widget.tfMaxLines + 16
+    LayoutSize(
+      width: clamp(max(constraints.minWidth, 200), constraints.minWidth, constraints.maxWidth),
+      height: clamp(tfHeight, constraints.minHeight, constraints.maxHeight)
+    )
+
   of wkImage:
     LayoutSize(
       width: clamp(widget.imgWidth, constraints.minWidth, constraints.maxWidth),
@@ -621,19 +829,55 @@ proc render*(widget: Widget, gc: GraphicsContext, x, y, width, height: int) =
     let children = widget.rowChildren
     let spacing = widget.rowSpacing
     let childCount = children.len
-
-    # Calculate total width and max height
-    var sizes: seq[LayoutSize]
-    var totalW = 0
+    
+    # Two-pass flex layout (same as measure)
+    var totalFixedW = 0
     var maxH = 0
-    for child in children:
-      let sz = child.measure(LayoutConstraints(
-        maxWidth: width, maxHeight: height))
-      sizes.add(sz)
-      totalW += sz.width
-      maxH = max(maxH, sz.height)
-    totalW += spacing * max(0, childCount - 1)
-
+    var totalFlex = 0
+    var expandedIndices: seq[int] = @[]
+    var expandedFlexes: seq[int] = @[]
+    
+    var sizes: seq[LayoutSize] = newSeq[LayoutSize](childCount)
+    
+    for i, child in children:
+      if child.kind == wkExpanded:
+        totalFlex += child.expFlex
+        expandedIndices.add(i)
+        expandedFlexes.add(child.expFlex)
+      else:
+        let sz = child.measure(LayoutConstraints(
+          minWidth: 0, maxWidth: width,
+          minHeight: 0, maxHeight: height
+        ))
+        sizes[i] = sz
+        totalFixedW += sz.width
+        maxH = max(maxH, sz.height)
+    
+    totalFixedW += spacing * max(0, childCount - 1)
+    
+    # Calculate available space for Expanded children
+    let availableW = max(0, width - totalFixedW)
+    var flexUnit = 0
+    if totalFlex > 0:
+      flexUnit = availableW div totalFlex
+    
+    # Second pass: measure Expanded children with allocated space
+    for idx, i in expandedIndices:
+      let child = children[i]
+      let allocatedW = flexUnit * expandedFlexes[idx]
+      if child.expChild != nil:
+        let childConstraints = LayoutConstraints(
+          minWidth: allocatedW, maxWidth: allocatedW,
+          minHeight: 0, maxHeight: height
+        )
+        let sz = child.expChild.measure(childConstraints)
+        sizes[i] = sz
+        maxH = max(maxH, sz.height)
+      else:
+        sizes[i] = LayoutSize(width: allocatedW, height: 0)
+    
+    let totalW = totalFixedW + availableW
+    
     # Calculate starting X based on mainAxisAlignment
     var startX = x
     case widget.rowMainAlign
@@ -642,7 +886,6 @@ proc render*(widget: Widget, gc: GraphicsContext, x, y, width, height: int) =
     of msaCenter: startX = x + max(0, (width - totalW) div 2)
     of msaSpaceBetween:
       if childCount > 1:
-        let gap = max(0, (width - totalW) div (childCount - 1))
         startX = x  # handled in loop
     of msaSpaceAround:
       let gap = if childCount > 0: max(0, width - totalW) div childCount else: 0
@@ -656,13 +899,14 @@ proc render*(widget: Widget, gc: GraphicsContext, x, y, width, height: int) =
     for i, child in children:
       # Calculate Y based on crossAxisAlignment
       var cy = y
+      var childHeight = sizes[i].height
       case widget.rowCrossAlign
       of csaStart: discard
       of csaEnd: cy = y + max(0, height - sizes[i].height)
       of csaCenter: cy = y + max(0, (height - sizes[i].height) div 2)
-      of csaStretch: discard
+      of csaStretch: cy = y; childHeight = height
 
-      child.render(gc, cx, cy, sizes[i].width, max(sizes[i].height, height))
+      child.render(gc, cx, cy, sizes[i].width, childHeight)
       cx += sizes[i].width + spacing
 
       if widget.rowMainAlign == msaSpaceBetween and childCount > 1:
@@ -673,19 +917,55 @@ proc render*(widget: Widget, gc: GraphicsContext, x, y, width, height: int) =
     let children = widget.colChildren
     let spacing = widget.colSpacing
     let childCount = children.len
-
-    var sizes: seq[LayoutSize]
-    var totalH = 0
+    
+    # Two-pass flex layout (same as measure)
+    var totalFixedH = 0
     var maxW = 0
-    for child in children:
-      let sz = child.measure(LayoutConstraints(
-        maxWidth: width, maxHeight: height - totalH))
-      sizes.add(sz)
-      totalH += sz.height
-      maxW = max(maxW, sz.width)
-      totalH += spacing
-    if childCount > 0: totalH -= spacing
-
+    var totalFlex = 0
+    var expandedIndices: seq[int] = @[]
+    var expandedFlexes: seq[int] = @[]
+    
+    var sizes: seq[LayoutSize] = newSeq[LayoutSize](childCount)
+    
+    for i, child in children:
+      if child.kind == wkExpanded:
+        totalFlex += child.expFlex
+        expandedIndices.add(i)
+        expandedFlexes.add(child.expFlex)
+      else:
+        let sz = child.measure(LayoutConstraints(
+          minWidth: 0, maxWidth: width,
+          minHeight: 0, maxHeight: height
+        ))
+        sizes[i] = sz
+        totalFixedH += sz.height
+        maxW = max(maxW, sz.width)
+    
+    totalFixedH += spacing * max(0, childCount - 1)
+    
+    # Calculate available space for Expanded children
+    let availableH = max(0, height - totalFixedH)
+    var flexUnit = 0
+    if totalFlex > 0:
+      flexUnit = availableH div totalFlex
+    
+    # Second pass: measure Expanded children with allocated space
+    for idx, i in expandedIndices:
+      let child = children[i]
+      let allocatedH = flexUnit * expandedFlexes[idx]
+      if child.expChild != nil:
+        let childConstraints = LayoutConstraints(
+          minWidth: 0, maxWidth: width,
+          minHeight: allocatedH, maxHeight: allocatedH
+        )
+        let sz = child.expChild.measure(childConstraints)
+        sizes[i] = sz
+        maxW = max(maxW, sz.width)
+      else:
+        sizes[i] = LayoutSize(width: 0, height: allocatedH)
+    
+    let totalH = totalFixedH + availableH
+    
     var startY = y
     case widget.colMainAlign
     of msaStart: discard
@@ -693,7 +973,6 @@ proc render*(widget: Widget, gc: GraphicsContext, x, y, width, height: int) =
     of msaCenter: startY = y + max(0, (height - totalH) div 2)
     of msaSpaceBetween:
       if childCount > 1:
-        let gap = max(0, (height - totalH) div (childCount - 1))
         startY = y
     of msaSpaceAround:
       let gap = if childCount > 0: max(0, height - totalH) div childCount else: 0
@@ -705,13 +984,14 @@ proc render*(widget: Widget, gc: GraphicsContext, x, y, width, height: int) =
     var cy = startY
     for i, child in children:
       var cx = x
+      var childWidth = sizes[i].width
       case widget.colCrossAlign
       of csaStart: discard
       of csaEnd: cx = x + max(0, width - sizes[i].width)
       of csaCenter: cx = x + max(0, (width - sizes[i].width) div 2)
-      of csaStretch: discard
+      of csaStretch: cx = x; childWidth = width
 
-      child.render(gc, cx, cy, max(sizes[i].width, width), sizes[i].height)
+      child.render(gc, cx, cy, childWidth, sizes[i].height)
       cy += sizes[i].height + spacing
 
       if widget.colMainAlign == msaSpaceBetween and childCount > 1:
@@ -767,7 +1047,6 @@ proc render*(widget: Widget, gc: GraphicsContext, x, y, width, height: int) =
       gc.fillRect(x, y, width, appBarH, widget.scfAppBar.bgColor)
       let font = defaultFont()
       let (_, th) = font.measureText(widget.scfAppBar.title)
-      let tw = font.measureTextWidth(widget.scfAppBar.title)
       gc.drawText(x + 16, y + (appBarH - th) div 2,
                   widget.scfAppBar.title, font, widget.scfAppBar.fgColor)
 
@@ -836,6 +1115,117 @@ proc render*(widget: Widget, gc: GraphicsContext, x, y, width, height: int) =
         gc.fillRoundedRect(x, y, fillW, widget.pbHeight, widget.pbRadius, widget.pbColor)
       else:
         gc.fillRect(x, y, fillW, widget.pbHeight, widget.pbColor)
+
+  of wkDivider:
+    if widget.divVertical:
+      gc.fillRect(x, y, widget.divThickness, height, widget.divColor)
+    else:
+      gc.fillRect(x, y, width, widget.divThickness, widget.divColor)
+
+  of wkCheckbox:
+    let font = defaultFont()
+    let boxSize = 24
+    let boxX = x
+    let boxY = y + (height - boxSize) div 2
+
+    # Checkbox box
+    if widget.chkValue:
+      gc.fillRoundedRect(boxX, boxY, boxSize, boxSize, 4, widget.chkActiveColor)
+      # Check mark
+      let checkX = boxX + boxSize div 3
+      let checkY = boxY + boxSize div 3
+      let checkW = boxSize div 3
+      let checkH = boxSize div 3 * 2
+      gc.drawLine(checkX, checkY + checkH div 2, checkX + checkW div 2, checkY + checkH, widget.chkCheckColor, 2)
+      gc.drawLine(checkX + checkW div 2, checkY + checkH, checkX + checkW, checkY, widget.chkCheckColor, 2)
+    else:
+      gc.drawRoundedRect(boxX, boxY, boxSize, boxSize, 4, widget.chkActiveColor, 2)
+
+    # Label
+    if widget.chkLabel.len > 0:
+      gc.drawText(boxX + boxSize + 8, y + (height - font.measureTextHeight(widget.chkLabel)) div 2,
+                  widget.chkLabel, font, colText)
+
+  of wkSwitch:
+    let trackW = 56
+    let trackH = 32
+    let trackX = x + (width - trackW) div 2
+    let trackY = y + (height - trackH) div 2
+    let thumbR = 14
+    let thumbOffset = (widget.swValue.float * (trackW - thumbR * 2 - 4).float).int
+    let thumbX = trackX + 2 + thumbOffset
+    let thumbY = trackY + (trackH - thumbR * 2) div 2
+
+    # Track
+    if widget.swValue:
+      gc.fillRoundedRect(trackX, trackY, trackW, trackH, trackH div 2, widget.swActiveColor)
+    else:
+      gc.fillRoundedRect(trackX, trackY, trackW, trackH, trackH div 2, widget.swTrackColor)
+
+    # Thumb
+    gc.fillCircle(thumbX + thumbR, thumbY + thumbR, thumbR, widget.swThumbColor)
+
+  of wkSlider:
+    let trackH = 4
+    let trackY = y + (height - trackH) div 2
+    let trackX = x
+    let trackW = width
+    let thumbR = widget.sldThumbRadius
+    let valueRatio = (widget.sldValue - widget.sldMin) / (widget.sldMax - widget.sldMin)
+    let thumbCX = trackX + int(valueRatio.float * (trackW - 1).float)
+    let thumbCY = trackY + trackH div 2
+
+    # Track
+    gc.fillRoundedRect(trackX, trackY, trackW, trackH, trackH div 2, widget.sldTrackColor)
+    # Active track portion
+    let activeW = thumbCX - trackX
+    if activeW > 0:
+      gc.fillRoundedRect(trackX, trackY, activeW, trackH, trackH div 2, widget.sldActiveColor)
+
+    # Thumb
+    gc.fillCircle(thumbCX, thumbCY, thumbR, widget.sldThumbColor)
+    gc.drawCircle(thumbCX, thumbCY, thumbR, colTextMuted, 1)
+
+    # Value label
+    let font = defaultFont()
+    let valueStr = $widget.sldValue.formatFloat(ffDecimal, 2)
+    let (_, textH) = font.measureText(valueStr)
+    let textW = font.measureTextWidth(valueStr)
+    gc.drawText(thumbCX - textW div 2, trackY - textH - 4, valueStr, font, colTextMuted)
+
+  of wkTextField:
+    let font = defaultFont()
+    let padding = 8
+    let fieldH = height
+    let fieldW = width
+
+    # Background
+    if widget.tfFocused:
+      gc.fillRoundedRect(x, y, fieldW, fieldH, 6, colBgFocus)
+      gc.drawRoundedRect(x, y, fieldW, fieldH, 6, colBlue, 2)
+    else:
+      gc.fillRoundedRect(x, y, fieldW, fieldH, 6, colBgCard)
+      gc.drawRoundedRect(x, y, fieldW, fieldH, 6, colBgHover, 1)
+
+    # Text or placeholder
+    let displayText = if widget.tfObscureText:
+                        newString(widget.tfText.len).mapIt("●").join("")
+                      else:
+                        widget.tfText
+    let isEmpty = displayText.len == 0 and widget.tfText.len == 0
+    let textColor = if isEmpty: colTextMuted else: widget.tfStyle.color
+    let textToDraw = if isEmpty: widget.tfPlaceholder else: displayText
+
+    if textToDraw.len > 0:
+      let (_, textH) = font.measureText(textToDraw)
+      gc.drawText(x + padding, y + (fieldH - textH) div 2, textToDraw, font, textColor)
+
+    # Cursor (when focused)
+    if widget.tfFocused and not widget.tfReadOnly:
+      let cursorX = x + padding + font.measureTextWidth(displayText)
+      let (_, textH) = font.measureText("Ay")
+      gc.drawLine(cursorX, y + (fieldH - textH) div 2,
+                  cursorX, y + (fieldH + textH) div 2, colBlue, 2)
 
   of wkImage:
     if widget.imgData.len == widget.imgWidth * widget.imgHeight:
@@ -906,7 +1296,13 @@ proc hitTest*(widget: Widget, px, py, x, y, width, height: int): HitTestResult =
         return bodyResult
     result = HitTestResult(hit: true, x: px - x, y: py - y)
 
-  of wkCenter, wkExpanded, wkSizedBox, wkPadding, wkAlign:
+  of wkCenter, wkExpanded, wkSizedBox, wkPadding, wkAlign, wkDivider:
+    result = HitTestResult(hit: true, x: px - x, y: py - y)
+
+  of wkCheckbox, wkSwitch, wkSlider:
+    result = HitTestResult(hit: true, x: px - x, y: py - y)
+
+  of wkTextField:
     result = HitTestResult(hit: true, x: px - x, y: py - y)
 
   else:

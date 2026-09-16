@@ -44,58 +44,60 @@ proc main() =
           width = -1,
           height = 120
         ),
-        padding(
-          column(
-            card(
-              column(
-                text("Counter", textStyle(size = 20, color = colText, weight = fwBold)),
-                text("Count: " & $counter, textStyle(size = 16, color = colCyan)),
-                progressBar(counter.float / 10.0, color = colGreen, trackColor = colBgFocus),
-                row(12,
-                  button("  -  ", decCounter, redBtnStyle),
-                  button("  +  ", incCounter, greenBtnStyle),
-                  button("Reset", resetCounter, purpleBtnStyle)
-                )
-              ),
-              padding = insets(24),
-              margin = insets(4),
-              radius = 12,
-              color = colBgCard
-            ),
-            row(16,
+        expanded(
+          padding(
+            column(
               card(
                 column(
-                  text("Features", textStyle(size = 16, color = colYellow, weight = fwBold)),
-                  text("- Declarative widgets", textStyle(size = 13, color = colText)),
-                  text("- X11 rendering", textStyle(size = 13, color = colText)),
-                  text("- FreeType text", textStyle(size = 13, color = colText)),
-                  text("- Zero dependencies", textStyle(size = 13, color = colText))
+                  text("Counter", textStyle(size = 20, color = colText, weight = fwBold)),
+                  text("Count: " & $counter, textStyle(size = 16, color = colCyan)),
+                  progressBar(counter.float / 10.0, color = colGreen, trackColor = colBgFocus),
+                  row(12,
+                    button("  -  ", decCounter, redBtnStyle),
+                    button("  +  ", incCounter, greenBtnStyle),
+                    button("Reset", resetCounter, purpleBtnStyle)
+                  )
                 ),
-                padding = insets(20),
+                padding = insets(24),
+                margin = insets(4),
                 radius = 12,
                 color = colBgCard
               ),
-              expanded(
+              row(16,
                 card(
                   column(
-                    text("Layout", textStyle(size = 16, color = colCyan, weight = fwBold)),
-                    text("Row / Column / Stack", textStyle(size = 13, color = colText)),
-                    text("Center / Expanded", textStyle(size = 13, color = colText)),
-                    text("Padding / Align", textStyle(size = 13, color = colText)),
-                    text("Card / Container", textStyle(size = 13, color = colText))
+                    text("Features", textStyle(size = 16, color = colYellow, weight = fwBold)),
+                    text("- Declarative widgets", textStyle(size = 13, color = colText)),
+                    text("- X11 rendering", textStyle(size = 13, color = colText)),
+                    text("- FreeType text", textStyle(size = 13, color = colText)),
+                    text("- Zero dependencies", textStyle(size = 13, color = colText))
                   ),
                   padding = insets(20),
                   radius = 12,
                   color = colBgCard
+                ),
+                expanded(
+                  card(
+                    column(
+                      text("Layout", textStyle(size = 16, color = colCyan, weight = fwBold)),
+                      text("Row / Column / Stack", textStyle(size = 13, color = colText)),
+                      text("Center / Expanded", textStyle(size = 13, color = colText)),
+                      text("Padding / Align", textStyle(size = 13, color = colText)),
+                      text("Card / Container", textStyle(size = 13, color = colText))
+                    ),
+                    padding = insets(20),
+                    radius = 12,
+                    color = colBgCard
+                  )
                 )
+              ),
+              center(
+                text("Press Escape to quit | " & $counter & " clicks", textStyle(size = 12, color = colTextMuted)),
+                height = 40
               )
             ),
-            center(
-              text("Press Escape to quit | " & $counter & " clicks", textStyle(size = 12, color = colTextMuted)),
-              height = 40
-            )
-          ),
-          insets(0, 24)
+            insets(0, 24)
+          )
         )
       ),
       AppBarConfig(

@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <poll.h>
 #include <wayland-client.h>
 #include "xdg-shell-client.h"
 
@@ -160,6 +161,18 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 };
 
 /* Pointer listener */
+static void pointer_enter(void *data, struct wl_pointer *pointer,
+                          uint32_t serial, struct wl_surface *surface,
+                          wl_fixed_t surface_x, wl_fixed_t surface_y) {
+    (void)data; (void)pointer; (void)serial; (void)surface;
+    (void)surface_x; (void)surface_y;
+}
+
+static void pointer_leave(void *data, struct wl_pointer *pointer,
+                          uint32_t serial, struct wl_surface *surface) {
+    (void)data; (void)pointer; (void)serial; (void)surface;
+}
+
 static void pointer_motion(void *data, struct wl_pointer *pointer,
                            uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {
     push_event(EVT_MOTION, wl_fixed_to_int(surface_x), wl_fixed_to_int(surface_y), NULL);
@@ -171,21 +184,51 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
     push_event(state ? EVT_BUTTON_PRESS : EVT_BUTTON_RELEASE, button, 0, NULL);
 }
 
+static void pointer_axis(void *data, struct wl_pointer *pointer,
+                         uint32_t time, uint32_t axis, wl_fixed_t value) {
+    (void)data; (void)pointer; (void)time; (void)axis; (void)value;
+}
+
+static void pointer_axis_source(void *data, struct wl_pointer *pointer,
+                                uint32_t axis_source) {
+    (void)data; (void)pointer; (void)axis_source;
+}
+
+static void pointer_axis_stop(void *data, struct wl_pointer *pointer,
+                              uint32_t time, uint32_t axis) {
+    (void)data; (void)pointer; (void)time; (void)axis;
+}
+
+static void pointer_frame(void *data, struct wl_pointer *pointer) {
+    (void)data; (void)pointer;
+}
+
 static const struct wl_pointer_listener pointer_listener = {
-    .enter = NULL,
-    .leave = NULL,
+    .enter = pointer_enter,
+    .leave = pointer_leave,
     .motion = pointer_motion,
     .button = pointer_button,
-    .axis = NULL,
-    .axis_source = NULL,
-    .axis_stop = NULL,
-    .frame = NULL
+    .axis = pointer_axis,
+    .axis_source = pointer_axis_source,
+    .axis_stop = pointer_axis_stop,
+    .frame = pointer_frame
 };
 
 /* Keyboard listener */
 static void keyboard_keymap(void *data, struct wl_keyboard *keyboard,
                             uint32_t format, int32_t fd, uint32_t size) {
-    close(fd);
+    if (fd >= 0) close(fd);
+}
+
+static void keyboard_enter(void *data, struct wl_keyboard *keyboard,
+                           uint32_t serial, struct wl_surface *surface,
+                           struct wl_array *keys) {
+    (void)data; (void)keyboard; (void)serial; (void)surface; (void)keys;
+}
+
+static void keyboard_leave(void *data, struct wl_keyboard *keyboard,
+                           uint32_t serial, struct wl_surface *surface) {
+    (void)data; (void)keyboard; (void)serial; (void)surface;
 }
 
 static void keyboard_key(void *data, struct wl_keyboard *keyboard,
@@ -225,13 +268,26 @@ static void keyboard_key(void *data, struct wl_keyboard *keyboard,
     }
 }
 
+static void keyboard_modifiers(void *data, struct wl_keyboard *keyboard,
+                               uint32_t serial, uint32_t mods_depressed,
+                               uint32_t mods_latched, uint32_t mods_locked,
+                               uint32_t group) {
+    (void)data; (void)keyboard; (void)serial; (void)mods_depressed;
+    (void)mods_latched; (void)mods_locked; (void)group;
+}
+
+static void keyboard_repeat_info(void *data, struct wl_keyboard *keyboard,
+                                 int32_t rate, int32_t delay) {
+    (void)data; (void)keyboard; (void)rate; (void)delay;
+}
+
 static const struct wl_keyboard_listener keyboard_listener = {
     .keymap = keyboard_keymap,
-    .enter = NULL,
-    .leave = NULL,
+    .enter = keyboard_enter,
+    .leave = keyboard_leave,
     .key = keyboard_key,
-    .modifiers = NULL,
-    .repeat_info = NULL
+    .modifiers = keyboard_modifiers,
+    .repeat_info = keyboard_repeat_info
 };
 
 /* Seat capabilities listener */
@@ -271,6 +327,11 @@ static const struct wl_seat_listener seat_listener = {
     .name = seat_name,
 };
 
+/* Frame callback listener (static to avoid stack allocation issues) */
+static const struct wl_callback_listener frame_callback_listener = {
+    .done = frame_callback_handler
+};
+
 /* Frame callback for vsync */
 static void frame_callback_handler(void *data, struct wl_callback *callback,
                                    uint32_t time) {
@@ -282,9 +343,9 @@ static void frame_callback_handler(void *data, struct wl_callback *callback,
     /* Queue next frame */
     if (surface) {
         frame_callback = wl_surface_frame(surface);
-        wl_callback_add_listener(frame_callback, &(struct wl_callback_listener){
-            .done = frame_callback_handler
-        }, NULL);
+        if (frame_callback) {
+            wl_callback_add_listener(frame_callback, &frame_callback_listener, NULL);
+        }
     }
 }
 
@@ -302,6 +363,57 @@ static int create_shm_file(size_t size) {
     return fd;
 }
 
+/* Recreate SHM buffer with new dimensions */
+void wl_resize_buffer(void *win, int width, int height) {
+    (void)win;
+    
+    win_width = width;
+    win_height = height;
+    
+    /* Destroy old buffer and pool */
+    if (buffer) {
+        wl_buffer_destroy(buffer);
+        buffer = NULL;
+    }
+    if (pool) {
+        wl_shm_pool_destroy(pool);
+        pool = NULL;
+    }
+    if (shm_data && shm_data != MAP_FAILED) {
+        munmap(shm_data, shm_size);
+        shm_data = NULL;
+    }
+    if (shm_fd >= 0) {
+        close(shm_fd);
+        shm_fd = -1;
+    }
+    
+    /* Create new SHM buffer */
+    if (shm) {
+        shm_size = width * height * 4;  /* ARGB8888 */
+        shm_fd = create_shm_file(shm_size);
+        if (shm_fd >= 0) {
+            shm_data = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+            if (shm_data == MAP_FAILED) {
+                close(shm_fd);
+                shm_fd = -1;
+            } else {
+                /* Clear buffer to dark background (BGRA: 42, 34, 30, 255 = opaque dark) */
+                /* ARGB8888 on little-endian: A in byte 0, R in byte 1, G in byte 2, B in byte 3 */
+                uint32_t bg_color = (255u << 0) | (30u << 8) | (34u << 16) | (42u << 24);
+                uint32_t *pixels = (uint32_t *)shm_data;
+                for (size_t i = 0; i < (size_t)width * height; i++) {
+                    pixels[i] = bg_color;
+                }
+                
+                pool = wl_shm_create_pool(shm, shm_fd, (int32_t)shm_size);
+                buffer = wl_shm_pool_create_buffer(pool, 0, width, height,
+                                                    width * 4, WL_SHM_FORMAT_ARGB8888);
+            }
+        }
+    }
+}
+
 /* =============================================================================
  * Public API
  * =============================================================================*/
@@ -312,7 +424,6 @@ void *wl_init_window(const char *title, int width, int height, event_callback cb
     /* Connect to Wayland display */
     display = wl_display_connect(NULL);
     if (!display) {
-        fprintf(stderr, "wayland_shim: Failed to connect to Wayland display\n");
         return NULL;
     }
 
@@ -325,15 +436,38 @@ void *wl_init_window(const char *title, int width, int height, event_callback cb
     wl_display_roundtrip(display);
 
     if (!compositor) {
-        fprintf(stderr, "wayland_shim: No compositor\n");
         return NULL;
     }
 
     /* Create surface */
     surface = wl_compositor_create_surface(compositor);
     if (!surface) {
-        fprintf(stderr, "wayland_shim: Cannot create surface\n");
         return NULL;
+    }
+
+    /* Set up SHM */
+    if (shm) {
+        shm_size = width * height * 4;  /* ARGB8888 */
+        shm_fd = create_shm_file(shm_size);
+        if (shm_fd >= 0) {
+            shm_data = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+            if (shm_data == MAP_FAILED) {
+                close(shm_fd);
+                shm_fd = -1;
+            } else {
+                /* Clear buffer to dark background (BGRA: 42, 34, 30, 255 = opaque dark) */
+                /* ARGB8888 on little-endian: A in byte 0, R in byte 1, G in byte 2, B in byte 3 */
+                uint32_t bg_color = (255u << 0) | (30u << 8) | (34u << 16) | (42u << 24);
+                uint32_t *pixels = (uint32_t *)shm_data;
+                for (size_t i = 0; i < (size_t)width * height; i++) {
+                    pixels[i] = bg_color;
+                }
+                
+                pool = wl_shm_create_pool(shm, shm_fd, (int32_t)shm_size);
+                buffer = wl_shm_pool_create_buffer(pool, 0, width, height,
+                                                    width * 4, WL_SHM_FORMAT_ARGB8888);
+            }
+        }
     }
 
     /* Set up xdg_wm_base */
@@ -348,26 +482,8 @@ void *wl_init_window(const char *title, int width, int height, event_callback cb
         xdg_toplevel_set_title(toplevel, title);
         xdg_toplevel_set_app_id(toplevel, "nimact-gui");
 
-        /* Set geometry and commit */
+        /* Set geometry */
         xdg_surface_set_window_geometry(xdg_surface, 0, 0, width, height);
-        wl_surface_commit(surface);
-    }
-
-    /* Set up SHM */
-    if (shm) {
-        shm_size = width * height * 4;  /* ARGB8888 */
-        shm_fd = create_shm_file(shm_size);
-        if (shm_fd >= 0) {
-            shm_data = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-            if (shm_data == MAP_FAILED) {
-                close(shm_fd);
-                shm_fd = -1;
-            } else {
-                pool = wl_shm_create_pool(shm, shm_fd, (int32_t)shm_size);
-                buffer = wl_shm_pool_create_buffer(pool, 0, width, height,
-                                                    width * 4, WL_SHM_FORMAT_ARGB8888);
-            }
-        }
     }
 
     /* Set up seat */
@@ -377,12 +493,17 @@ void *wl_init_window(const char *title, int width, int height, event_callback cb
         wl_display_roundtrip(display);
     }
 
+    /* Initial commit with buffer attached */
+    if (buffer && surface) {
+        wl_surface_attach(surface, buffer, 0, 0);
+        wl_surface_damage_buffer(surface, 0, 0, width, height);
+        wl_surface_commit(surface);
+    }
+
     /* Start frame callback for smooth rendering */
     if (surface) {
         frame_callback = wl_surface_frame(surface);
-        wl_callback_add_listener(frame_callback, &(struct wl_callback_listener){
-            .done = frame_callback_handler
-        }, NULL);
+        wl_callback_add_listener(frame_callback, &frame_callback_listener, NULL);
     }
 
     /* Initial flush */
@@ -447,10 +568,39 @@ int wl_poll_events(void *win) {
     (void)win;
     if (!display) return -1;
 
-    /* Process Wayland events (which will push to our queue) */
-    if (wl_display_dispatch(display) == -1) {
+    /* Read events from Wayland socket (blocking with short timeout) */
+    int fd = wl_display_get_fd(display);
+    
+    /* Prepare for reading */
+    int prep_ret = wl_display_prepare_read(display);
+    if (prep_ret != 0) {
+        /* Another thread is reading, just dispatch pending */
+        int ret = wl_display_dispatch_pending(display);
+        if (ret == -1 && wl_display_get_error(display) != 0) {
+            return -1;
+        }
+        return win_closed ? 1 : 0;
+    }
+    
+    /* Poll for data on the fd */
+    struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+    int poll_ret = poll(&pfd, 1, 16);  /* ~60fps timeout */
+    
+    if (poll_ret > 0 && (pfd.revents & POLLIN)) {
+        /* Data available, read events */
+        if (wl_display_read_events(display) == -1) {
+            wl_display_cancel_read(display);
+            return -1;
+        }
+    } else {
+        /* No data or timeout, cancel read */
+        wl_display_cancel_read(display);
+    }
+    
+    /* Dispatch any pending events */
+    int ret = wl_display_dispatch_pending(display);
+    if (ret == -1) {
         if (wl_display_get_error(display) != 0) {
-            fprintf(stderr, "wayland_shim: Fatal error in dispatch\n");
             return -1;
         }
     }
@@ -494,6 +644,11 @@ void wl_flush_buffer(void *win) {
         wl_surface_attach(surface, buffer, 0, 0);
         wl_surface_damage_buffer(surface, 0, 0, win_width, win_height);
         wl_surface_commit(surface);
+        /* Request next frame callback */
+        if (!frame_callback) {
+            frame_callback = wl_surface_frame(surface);
+            wl_callback_add_listener(frame_callback, &frame_callback_listener, NULL);
+        }
     }
     wl_display_flush(display);
 }
