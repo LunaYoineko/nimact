@@ -32,7 +32,6 @@
 ## =============================================================================
 
 import std/asyncdispatch
-import std/math
 import std/tables
 import std/times
 import ./core/term
